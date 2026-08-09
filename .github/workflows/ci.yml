@@ -47,7 +47,7 @@ jobs:
       - run: npx prisma generate
       - run: npm run lint
       - run: npm run build
-      - run: npx prisma db execute --file prisma/ci-create-role.sql --schema prisma/schema.prisma
+      - run: npx prisma db execute --file prisma/ci-create-role.sql
       - run: npx prisma migrate deploy
       - run: npm test -- --ci
       - run: npm run test:e2e -- --ci
