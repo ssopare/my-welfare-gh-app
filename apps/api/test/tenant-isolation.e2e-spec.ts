@@ -48,12 +48,22 @@ describe('Tenant isolation (RLS)', () => {
   });
 
   afterAll(async () => {
-    await prisma.withTenant(orgA.id, (tx) => tx.member.deleteMany({ where: { organisationId: orgA.id } }));
-    await prisma.withTenant(orgB.id, (tx) => tx.member.deleteMany({ where: { organisationId: orgB.id } }));
+    await prisma.withTenant(orgA.id, (tx) =>
+      tx.member.deleteMany({ where: { organisationId: orgA.id } }),
+    );
+    await prisma.withTenant(orgB.id, (tx) =>
+      tx.member.deleteMany({ where: { organisationId: orgB.id } }),
+    );
     await prisma.account.delete({ where: { id: accountId } });
-    await prisma.withTenant(orgA.id, (tx) => tx.organisation.delete({ where: { id: orgA.id } }));
-    await prisma.withTenant(orgB.id, (tx) => tx.organisation.delete({ where: { id: orgB.id } }));
-    await prisma.withTenant(emptyOrg.id, (tx) => tx.organisation.delete({ where: { id: emptyOrg.id } }));
+    await prisma.withTenant(orgA.id, (tx) =>
+      tx.organisation.delete({ where: { id: orgA.id } }),
+    );
+    await prisma.withTenant(orgB.id, (tx) =>
+      tx.organisation.delete({ where: { id: orgB.id } }),
+    );
+    await prisma.withTenant(emptyOrg.id, (tx) =>
+      tx.organisation.delete({ where: { id: emptyOrg.id } }),
+    );
     await prisma.onModuleDestroy();
   });
 
@@ -66,19 +76,25 @@ describe('Tenant isolation (RLS)', () => {
   });
 
   it("tenant A's scope contains only its own member, never tenant B's", async () => {
-    const membersInA = await prisma.withTenant(orgA.id, (tx) => tx.member.findMany());
+    const membersInA = await prisma.withTenant(orgA.id, (tx) =>
+      tx.member.findMany(),
+    );
     expect(membersInA).toHaveLength(1);
     expect(membersInA[0].organisationId).toBe(orgA.id);
   });
 
   it("tenant B's scope contains only its own member, never tenant A's", async () => {
-    const membersInB = await prisma.withTenant(orgB.id, (tx) => tx.member.findMany());
+    const membersInB = await prisma.withTenant(orgB.id, (tx) =>
+      tx.member.findMany(),
+    );
     expect(membersInB).toHaveLength(1);
     expect(membersInB[0].organisationId).toBe(orgB.id);
   });
 
   it("tenant A's scope cannot read organisation B's row", async () => {
-    const orgs = await prisma.withTenant(orgA.id, (tx) => tx.organisation.findMany());
+    const orgs = await prisma.withTenant(orgA.id, (tx) =>
+      tx.organisation.findMany(),
+    );
     expect(orgs.map((o) => o.id)).toEqual([orgA.id]);
   });
 

@@ -41,6 +41,10 @@ jobs:
           cache: npm
       - run: npm ci
         working-directory: .
+      # generated/prisma is gitignored (it's generated code) — lint needs it
+      # on disk to type-check src/prisma/prisma.service.ts, so this must run
+      # before lint rather than relying on npm's postinstall hook timing.
+      - run: npx prisma generate
       - run: npm run lint
       - run: npm run build
       - run: npx prisma db execute --file prisma/ci-create-role.sql --schema prisma/schema.prisma

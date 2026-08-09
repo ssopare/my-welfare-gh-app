@@ -1,14 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Organisation, Prisma, PrismaClient } from '../../generated/prisma/client';
+import {
+  Organisation,
+  Prisma,
+  PrismaClient,
+} from '../../generated/prisma/client';
 
 // Connects as app_runtime (see infra/docker/initdb/01-create-app-role.sh),
 // never as the migration-owner role — app_runtime has no BYPASSRLS, which is
 // what makes the tenant-isolation RLS policies in the enable_rls migration
 // actually mean something. Never point this at DATABASE_URL.
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   constructor() {
     super({ adapter: new PrismaPg(process.env.APP_DATABASE_URL as string) });
   }
@@ -54,6 +61,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     data: Omit<Prisma.OrganisationCreateInput, 'id'>,
   ): Promise<Organisation> {
     const id = randomUUID();
-    return this.withTenant(id, (tx) => tx.organisation.create({ data: { id, ...data } }));
+    return this.withTenant(id, (tx) =>
+      tx.organisation.create({ data: { id, ...data } }),
+    );
   }
 }

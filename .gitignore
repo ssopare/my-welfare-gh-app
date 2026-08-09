@@ -28,5 +28,8 @@ apps/mobile/**/*.iml
 .DS_Store
 Thumbs.db
 
+# Claude Code local harness state
+.claude/
+
 # Docker
 infra/docker/volumes/
