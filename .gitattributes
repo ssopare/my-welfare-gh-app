@@ -1,0 +1,13 @@
+# Normalize to LF everywhere by default. Without this, Windows checkouts
+# (core.autocrlf=true) rewrite committed LF files to CRLF in the working
+# tree — harmless for most files, but infra/docker/initdb/*.sh gets
+# bind-mounted byte-for-byte into a Linux container, where a CRLF shebang
+# line fails to execute. Simpler to force LF for everything than to
+# special-case just the shell scripts.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.pdf binary

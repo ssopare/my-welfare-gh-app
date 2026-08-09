@@ -6,10 +6,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-welfare}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-welfare}
       POSTGRES_DB: ${POSTGRES_DB:-welfare_platform}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-app_runtime_dev_password}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - ./volumes/postgres:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-welfare} -d ${POSTGRES_DB:-welfare_platform}"]
       interval: 5s

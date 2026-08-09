@@ -1,0 +1,70 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+//
+// Phase 0 scope only: just enough of Section 10's core entities to prove
+// tenant isolation end-to-end. Full entity set (Wallet, ledger, rule engine,
+// claims, etc.) is Phase 1 — see docs/requirements §10/§11/§12/§24.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// The login identity — deliberately NOT tenant-scoped (Section 7's
+// identity-vs-membership split). One Account can hold Memberships in
+// multiple Organisations.
+model Account {
+  id           String   @id @default(uuid())
+  phoneNumber  String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  members Member[]
+
+  @@map("accounts")
+}
+
+// The tenant. Every tenant-scoped table carries an organisationId FK back
+// to this and is protected by a Postgres RLS policy keyed on it.
+model Organisation {
+  id        String   @id @default(uuid())
+  legalName String
+  type      String
+  country   String   @default("GH")
+  currency  String   @default("GHS")
+  status    String   @default("trial")
+  createdAt DateTime @default(now())
+
+  members Member[]
+
+  @@map("organisations")
+}
+
+enum MemberStatus {
+  ACTIVE
+  SUSPENDED
+  EXITED
+}
+
+// Belongs to one Account and one Organisation (Section 10). Tenant-scoped:
+// protected by RLS on organisationId.
+model Member {
+  id             String       @id @default(uuid())
+  accountId      String
+  organisationId String
+  joinDate       DateTime     @default(now())
+  status         MemberStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now())
+
+  account      Account      @relation(fields: [accountId], references: [id])
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+
+  @@index([organisationId])
+  @@map("members")
+}

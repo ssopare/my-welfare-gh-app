@@ -10,9 +10,29 @@ jobs:
   api:
     name: API (NestJS)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: welfare
+          POSTGRES_PASSWORD: welfare
+          POSTGRES_DB: welfare_platform
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U welfare -d welfare_platform"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: apps/api
+    env:
+      # services: containers can't mount infra/docker/initdb's role-creation
+      # script, so prisma/ci-create-role.sql does that as an explicit step
+      # instead — see that file. Password here is a CI-only throwaway.
+      DATABASE_URL: postgresql://welfare:welfare@localhost:5432/welfare_platform?schema=public
+      APP_DATABASE_URL: postgresql://app_runtime:app_runtime_ci_password@localhost:5432/welfare_platform?schema=public
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,7 +43,10 @@ jobs:
         working-directory: .
       - run: npm run lint
       - run: npm run build
+      - run: npx prisma db execute --file prisma/ci-create-role.sql --schema prisma/schema.prisma
+      - run: npx prisma migrate deploy
       - run: npm test -- --ci
+      - run: npm run test:e2e -- --ci
 
   admin:
     name: Admin (Next.js)
