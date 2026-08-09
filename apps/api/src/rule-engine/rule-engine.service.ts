@@ -86,6 +86,7 @@ export class RuleEngineService {
     ruleId: string,
     memberId: string,
     eventDate: Date,
+    dependantId?: string,
   ): Promise<EligibilityResult> {
     return this.prisma.withTenant(organisationId, async (tx) => {
       const rule = await tx.benefitRule.findUnique({ where: { id: ruleId } });
@@ -145,12 +146,35 @@ export class RuleEngineService {
         });
       }
 
-      // Deliberately not checked here: occurrenceCap and evidenceRequired.
-      // Both need Claims history to evaluate against, and Claims doesn't
-      // exist until roadmap slice 7. Leaving them out of `checks` entirely
-      // (rather than a fake always-passing entry) means nothing here can be
-      // mistaken for a real pass once Claims lands and this needs wiring up
-      // for real.
+      // FR-RULE-04's occurrenceCap, now that Claims exist to count against.
+      // Only "lifetime" scope is implemented — fail loudly rather than
+      // silently under-enforce a scope nothing evaluates yet, same pattern
+      // as computationType/paymentAllocationPolicy elsewhere in this app.
+      if (rule.occurrenceCapScope !== 'lifetime') {
+        throw new NotImplementedException(
+          `occurrenceCapScope "${rule.occurrenceCapScope}" is not yet implemented`,
+        );
+      }
+      const priorClaimCount = await tx.claim.count({
+        where: {
+          benefitRuleId: rule.id,
+          memberId,
+          dependantId: dependantId ?? null,
+          status: { not: 'REJECTED' },
+        },
+      });
+      const capPassed = priorClaimCount < rule.occurrenceCapMax;
+      checks.push({
+        description: `No more than ${rule.occurrenceCapMax} claim(s) against this benefit (lifetime)`,
+        passed: capPassed,
+        detail: `${priorClaimCount} prior non-rejected claim(s) found for this member${dependantId ? '/dependant' : ''}.`,
+      });
+
+      // Deliberately not checked here: evidenceRequired. ClaimService.submit
+      // enforces it against the evidence actually supplied at submission
+      // time — evaluateBenefitEligibility only answers "could this member
+      // qualify," which doesn't depend on paperwork that hasn't been
+      // gathered yet.
 
       const eligible = checks.every((c) => c.passed);
       return {

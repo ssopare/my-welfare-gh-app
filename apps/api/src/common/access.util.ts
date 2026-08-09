@@ -43,3 +43,26 @@ export async function requireSelfOrAdmin(
     );
   }
 }
+
+// For checks that aren't "admin or self" — e.g. Claims' approve/disburse
+// actions, which specific non-admin roles (Treasurer, Convener, ...) hold
+// via a real grant. hasPermission already treats the wildcard admin
+// permission as matching any resource/action, so this alone is sufficient
+// without a separate requireAdmin fallback.
+export async function requirePermission(
+  rbac: RbacService,
+  actor: AuthTokenPayload,
+  resource: string,
+  action: string,
+): Promise<void> {
+  if (
+    !(await rbac.hasPermission(
+      actor.organisationId,
+      actor.memberId,
+      resource,
+      action,
+    ))
+  ) {
+    throw new ForbiddenException(`Missing permission: ${resource}:${action}`);
+  }
+}

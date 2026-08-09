@@ -23,13 +23,17 @@ export const WILDCARD_ADMIN_PERMISSION: Permission = {
 // assign from day one. isTemplate is informational only — a tenant is
 // free to clone or diverge from any of these without a code change.
 //
-// Several resource/action pairs here (claim.*, ledger.disburse,
-// ledger.co_sign_disbursement) don't have an enforcement point wired up
-// yet — Claims doesn't exist until roadmap slice 7, and Disbursement
-// Authorization (§12.5) is deferred to Phase 2. Seeding the *data* now,
-// correctly shaped per the spec's own matrix, means those future slices
-// consume it rather than redesign it — the same "primitive now" pattern
-// as everywhere else in this build.
+// claim.approve is deliberately flat, not the spec's illustrative
+// approve_stage:<n> per-stage form: BenefitRule.approvalChain is a
+// tenant-defined, free-form array of stage-name strings, so there is no
+// fixed vocabulary (like "committee"/"final") a starter template could
+// name in advance that would reliably match an arbitrary tenant's chosen
+// stage names. Phase 1's own scope is explicitly "a simple 1-2 stage
+// approval chain" (full sequential/parallel/threshold routing, FR-CLM-06,
+// is deferred) — ClaimService checks this one permission uniformly at
+// every stage rather than differentiating who may approve *which* stage.
+// ledger.co_sign_disbursement has no enforcement point yet — Disbursement
+// Authorization (§12.5) is deferred to Phase 2.
 export const STARTER_ROLE_TEMPLATES: {
   name: string;
   permissions: Permission[];
@@ -53,11 +57,7 @@ export const STARTER_ROLE_TEMPLATES: {
       },
       { resource: 'benefit_rule', action: 'create', scope: 'organisation' },
       { resource: 'benefit_rule', action: 'activate', scope: 'organisation' },
-      {
-        resource: 'claim',
-        action: 'approve_stage:final',
-        scope: 'organisation',
-      },
+      { resource: 'claim', action: 'approve', scope: 'organisation' },
       { resource: 'ledger', action: 'disburse', scope: 'organisation' },
       { resource: 'ledger', action: 'view', scope: 'organisation' },
       { resource: 'member', action: 'view_financial', scope: 'organisation' },
@@ -73,29 +73,21 @@ export const STARTER_ROLE_TEMPLATES: {
         scope: 'organisation',
       },
       { resource: 'benefit_rule', action: 'create', scope: 'organisation' },
-      {
-        resource: 'claim',
-        action: 'approve_stage:committee',
-        scope: 'organisation',
-      },
+      { resource: 'claim', action: 'approve', scope: 'organisation' },
       { resource: 'member', action: 'view', scope: 'organisation' },
     ],
   },
   {
     name: 'Convener',
     permissions: [
-      { resource: 'claim', action: 'approve_stage:verify', scope: 'chapter' },
+      { resource: 'claim', action: 'approve', scope: 'chapter' },
       { resource: 'member', action: 'view', scope: 'chapter' },
     ],
   },
   {
     name: 'Patron',
     permissions: [
-      {
-        resource: 'claim',
-        action: 'approve_stage:sign_off',
-        scope: 'organisation',
-      },
+      { resource: 'claim', action: 'approve', scope: 'organisation' },
       {
         resource: 'ledger',
         action: 'co_sign_disbursement',

@@ -69,6 +69,7 @@ export class BenefitRuleController {
       id,
       dto.memberId,
       new Date(dto.eventDate),
+      dto.dependantId,
     );
   }
 }

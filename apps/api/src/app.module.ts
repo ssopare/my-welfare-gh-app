@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { ClaimsModule } from './claims/claims.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { MembershipModule } from './membership/membership.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -18,6 +19,7 @@ import { RuleEngineModule } from './rule-engine/rule-engine.module';
     LedgerModule,
     PaymentsModule,
     RoleModule,
+    ClaimsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

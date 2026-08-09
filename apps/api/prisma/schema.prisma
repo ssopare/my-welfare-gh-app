@@ -65,6 +65,7 @@ model Organisation {
   reconciliationExceptions ReconciliationException[]
   roles                    Role[]
   roleAssignments          RoleAssignment[]
+  claims                   Claim[]
 
   @@map("organisations")
 }
@@ -146,6 +147,7 @@ model Member {
   obligations     Obligation[]
   paymentIntents  PaymentIntent[]
   roleAssignments RoleAssignment[]
+  claims          Claim[]
 
   @@index([organisationId])
   @@index([accountId])
@@ -171,7 +173,8 @@ model Dependant {
   // Dependants entered directly (the common case) are confirmed immediately.
   confirmed      Boolean  @default(true)
 
-  member Member @relation(fields: [memberId], references: [id])
+  member Member  @relation(fields: [memberId], references: [id])
+  claims Claim[]
 
   @@index([organisationId])
   @@index([memberId])
@@ -244,11 +247,12 @@ model ContributionPlan {
 
 // FR-RULE-04, FR-MEM-03's counterpart on the entitlement side: what a
 // member/dependant is entitled to when a trigger event occurs. occurrenceCap
-// fields are captured now but NOT enforced by RuleEngineService yet — that
-// requires querying prior Claims, and Claims don't exist until roadmap
-// slice 7. Same for approvalChain: stored as an ordered list of stage names
-// (matching §11.2/11.3's worked JSON exactly) but not wired to anything
-// executable until Claims routes through it.
+// is now enforced by RuleEngineService.evaluateBenefitEligibility (roadmap
+// slice 7, Claims) by counting a member+dependant's prior non-rejected
+// Claims against this exact rule row — only occurrenceCapScope "lifetime"
+// is implemented, same "fail loudly rather than silently mis-evaluate"
+// pattern as computationType/paymentAllocationPolicy elsewhere. approvalChain
+// is the ordered list of stage names ClaimService walks a Claim through.
 model BenefitRule {
   id                          String     @id @default(uuid())
   organisationId              String
@@ -277,6 +281,7 @@ model BenefitRule {
   chapter      Chapter?     @relation(fields: [chapterId], references: [id])
   supersedes   BenefitRule? @relation("BenefitRuleVersions", fields: [supersedesId], references: [id])
   supersededBy BenefitRule? @relation("BenefitRuleVersions")
+  claims       Claim[]
 
   @@index([organisationId])
   @@map("benefit_rules")
@@ -371,6 +376,7 @@ model JournalEntry {
   reversals     JournalEntry[] @relation("JournalEntryReversals")
   lines         JournalLine[]
   paymentIntent PaymentIntent?
+  claim         Claim?
 
   @@index([organisationId])
   @@index([fundId])
@@ -588,4 +594,114 @@ model MemberStatusChange {
   @@index([organisationId])
   @@index([memberId])
   @@map("member_status_changes")
+}
+
+// §8.6, FR-CLM-01 through FR-CLM-04/06 (FR-CLM-05's discretionary graded
+// bands and FR-CLM-06's full sequential/parallel/threshold routing are
+// explicitly out of Phase 1 per the roadmap — this is "a simple 1-2 stage
+// approval chain, fixed-amount benefits" only). APPROVED and PAID are
+// deliberately distinct states, mirroring Obligation vs payment (§12.4):
+// a claim can clear every approval stage and still be sitting unpaid,
+// which is exactly the "applications register" vs "approved-and-paid
+// register" split FR-CLM-04 asks for — both are just filtered views over
+// this one table, not two separate stores.
+enum ClaimStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+// amountValue/currency are copied from the BenefitRule at submission time
+// (not read live from the rule later) so an amendment to the rule after
+// submission can never retroactively change what a pending claim pays out
+// — the same "obligation locks its amount at creation" reasoning as
+// Obligation.amountValue. dependantId is set when subjectTypes indicates
+// the claim is about a dependant (e.g. "dependant.death") rather than the
+// member themselves; occurrenceCap enforcement (RuleEngineService) counts
+// prior claims scoped to memberId+dependantId together, so each of a
+// member's dependants gets their own independent cap.
+model Claim {
+  id                String      @id @default(uuid())
+  organisationId    String
+  memberId          String
+  benefitRuleId     String
+  dependantId       String?
+  // Usually equal to memberId, but FR-CLM-01 allows an admin to file on a
+  // member's behalf — this is who actually called the endpoint.
+  submittedBy       String
+  eventDate         DateTime
+  amountValue       Decimal     @db.Decimal(12, 2)
+  currency          String
+  status            ClaimStatus @default(SUBMITTED)
+  // Index into benefitRule.approvalChain of the stage awaiting a decision.
+  // Meaningless once status is REJECTED/PAID; frozen at the chain length
+  // once APPROVED.
+  currentStageIndex Int         @default(0)
+  journalEntryId    String?     @unique
+  createdAt         DateTime    @default(now())
+
+  organisation Organisation       @relation(fields: [organisationId], references: [id])
+  member       Member             @relation(fields: [memberId], references: [id])
+  benefitRule  BenefitRule        @relation(fields: [benefitRuleId], references: [id])
+  dependant    Dependant?         @relation(fields: [dependantId], references: [id])
+  journalEntry JournalEntry?      @relation(fields: [journalEntryId], references: [id])
+  evidence     ClaimEvidence[]
+  stageActions ClaimStageAction[]
+
+  @@index([organisationId])
+  @@index([memberId])
+  @@index([benefitRuleId])
+  @@map("claims")
+}
+
+// FR-CLM-01's "capturing the required evidence type." No file/blob storage
+// exists in this app yet, so this is metadata-only — a type plus a text
+// reference (e.g. "Death certificate #12345, held by the Secretary") — not
+// the document itself. ClaimService.submit checks every type listed in the
+// rule's evidenceRequired is covered by at least one row here before it
+// will accept a submission.
+model ClaimEvidence {
+  id             String   @id @default(uuid())
+  claimId        String
+  organisationId String
+  evidenceType   String
+  description    String
+  uploadedBy     String
+  createdAt      DateTime @default(now())
+
+  claim Claim @relation(fields: [claimId], references: [id])
+
+  @@index([organisationId])
+  @@index([claimId])
+  @@map("claim_evidence")
+}
+
+enum ClaimDecision {
+  APPROVE
+  REJECT
+}
+
+// FR-CLM-03: "route through the tenant's configured approval chain,
+// recording actor and timestamp" — one row per decision, at every stage,
+// never overwritten. stageName is denormalized from
+// benefitRule.approvalChain[stageIndex] at decision time so this row stays
+// a correct historical record even in the (currently impossible, since
+// BenefitRule rows are immutable versions) event that ever changes.
+model ClaimStageAction {
+  id             String        @id @default(uuid())
+  claimId        String
+  organisationId String
+  stageIndex     Int
+  stageName      String
+  actorMemberId  String
+  decision       ClaimDecision
+  comment        String?
+  decidedAt      DateTime      @default(now())
+
+  claim Claim @relation(fields: [claimId], references: [id])
+
+  @@index([organisationId])
+  @@index([claimId])
+  @@map("claim_stage_actions")
 }
