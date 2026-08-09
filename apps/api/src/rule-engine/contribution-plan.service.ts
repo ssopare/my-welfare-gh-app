@@ -33,6 +33,10 @@ export class ContributionPlanService {
           collectionMechanism: dto.collectionMechanism ?? 'push',
           minTenureMonths: dto.minTenureMonths,
           goodStandingRequired: dto.goodStandingRequired ?? true,
+          joiningGracePeriodDays: dto.joiningGracePeriodDays,
+          paymentGracePeriodDays: dto.paymentGracePeriodDays,
+          reinstatementWaitingPeriodMonths:
+            dto.reinstatementWaitingPeriodMonths,
           supersedesId: dto.supersedesId,
           createdBy: actor.memberId,
         },

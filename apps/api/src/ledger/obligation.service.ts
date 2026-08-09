@@ -7,6 +7,7 @@ import {
 import { Prisma } from '../../generated/prisma/client';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { requireAdmin, requireSelfOrAdmin } from '../common/access.util';
+import { DefaulterService } from '../defaulter/defaulter.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
 import { RuleEngineService } from '../rule-engine/rule-engine.service';
@@ -23,6 +24,7 @@ export class ObligationService {
     private readonly ruleEngine: RuleEngineService,
     private readonly ledger: LedgerService,
     private readonly rbac: RbacService,
+    private readonly defaulter: DefaulterService,
   ) {}
 
   // The "prove them together" moment the roadmap called for: the rule
@@ -200,6 +202,29 @@ export class ObligationService {
         ],
       },
     );
+
+    // FR-DEF-02: "require arrears to be cleared before restoring good
+    // standing" — a payment is exactly the event that can clear them, so
+    // this is where reassessment fires, once per distinct plan touched
+    // (oldest-first allocation can span more than one plan in a single
+    // payment). No-op if the tenant hasn't configured a DefaulterPolicy.
+    const touchedPlanIds = new Set(
+      allocations
+        .map(
+          (allocation) =>
+            openObligations.find((o) => o.id === allocation.obligationId)
+              ?.contributionPlanId,
+        )
+        .filter((id): id is string => Boolean(id)),
+    );
+    for (const planId of touchedPlanIds) {
+      await this.defaulter.reassessInTx(
+        tx,
+        organisationId,
+        dto.memberId,
+        planId,
+      );
+    }
 
     return {
       journalEntry,

@@ -66,6 +66,7 @@ model Organisation {
   roles                    Role[]
   roleAssignments          RoleAssignment[]
   claims                   Claim[]
+  defaulterPolicy          DefaulterPolicy?
 
   @@map("organisations")
 }
@@ -704,4 +705,28 @@ model ClaimStageAction {
   @@index([organisationId])
   @@index([claimId])
   @@map("claim_stage_actions")
+}
+
+// §14, FR-DEF-01/02, Phase 1 scope only (§14.1's consistency score and
+// §14.3/14.4's dumping-pattern/proportional-payout logic are explicitly
+// Phase 2 per the roadmap table). One policy per tenant — opt-in: a member's
+// status is never auto-transitioned unless a tenant has configured one, the
+// same "some tenants don't want this" reasoning as
+// Organisation.makerCheckerEnabled. defaulterThresholdMonths mirrors
+// AGAOSAS's "2 consecutive months → not in good standing";
+// forfeitureThresholdMonths mirrors its "3 consecutive months → forfeiture
+// of entitlement" — DefaulterService maps these to the existing
+// MemberStatus.DEFAULTER/SUSPENDED values rather than adding a dedicated
+// "Forfeited" state Phase 1 doesn't otherwise need (both already block
+// benefit eligibility identically via goodStandingRequired).
+model DefaulterPolicy {
+  id                        String   @id @default(uuid())
+  organisationId            String   @unique
+  defaulterThresholdMonths  Int
+  forfeitureThresholdMonths Int
+  createdAt                 DateTime @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+
+  @@map("defaulter_policies")
 }

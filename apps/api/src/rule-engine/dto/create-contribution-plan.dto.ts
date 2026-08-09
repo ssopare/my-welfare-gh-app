@@ -47,6 +47,26 @@ export class CreateContributionPlanDto {
   @IsBoolean()
   goodStandingRequired?: boolean;
 
+  // §12.4's three contribution-side grace-period concepts — see the schema
+  // comment on ContributionPlan for why they're kept separate. Not consumed
+  // anywhere until the defaulter slice (§14): paymentGracePeriodDays feeds
+  // DefaulterService's missed-period computation, reinstatementWaitingPeriodMonths
+  // feeds its reinstatement-to-PROBATION-not-ACTIVE step.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  joiningGracePeriodDays?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  paymentGracePeriodDays?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  reinstatementWaitingPeriodMonths?: number;
+
   @IsOptional()
   @IsUUID()
   chapterId?: string;
