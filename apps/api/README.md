@@ -50,11 +50,26 @@ npm run test:e2e       # tenant-isolation.e2e-spec.ts proves RLS against a real 
 
 Phone + password, JWT-based (`JWT_SECRET` — generate your own for `.env`, e.g. `openssl rand -base64 32`; never reuse the dev one committed nowhere but present in your local `.env`). No OTP/SMS — that was a deliberate scope call to avoid an external provider dependency before the rule engine/ledger exist; see the auth-mechanism decision in project memory if revisiting this.
 
-- `POST /auth/register-organisation` — tenant self-registration (FR-ONB-01): creates the founding `Account` + `Organisation` + an `ADMIN` `Member`, all in one step, and returns a token.
-- `POST /auth/login` — `{ phoneNumber, password }`; add `organisationId` if the account has more than one Membership (no join-existing-org endpoint or multi-group switcher UI yet — §24.1 defers the polished version to Phase 2, this only has the data model for it).
+- `POST /auth/register-organisation` — tenant self-registration (FR-ONB-01): creates the founding `Account` + `Organisation` + an `ADMIN` `Member` (status `ACTIVE`, no approval needed — there's no one else yet), all in one step, returns a token.
+- `POST /auth/join-organisation` — FR-MEM-09: an existing or brand-new `Account` joins an *existing* `Organisation` as a new `Member` (status `PENDING`). See Membership below for what else this triggers.
+- `POST /auth/login` — `{ phoneNumber, password }`; add `organisationId` if the account has more than one Membership (no polished multi-group switcher UI yet — §24.1 defers that to Phase 2, this only has the data model for it).
 - `GET /auth/me` (guarded) — returns the decoded token payload (`sub`/accountId, `memberId`, `organisationId`, `role`).
 
 Login needs to discover which Organisation(s) an Account belongs to *before* any tenant context exists — the same bootstrapping problem `provisionOrganisation` solves for tenant creation. Solved the same way: `PrismaService.withAccount(accountId, fn)` sets `app.account_id`, which a second, independent RLS policy on `members` (`own_memberships`) reads — see the `add_member_role_and_account_policy` migration.
+
+### Membership (Phase 1, roadmap slice 2)
+
+Full lifecycle on top of the Phase 0 `Member` skeleton (FR-MEM-01/03/04/07 — see the `membership_lifecycle_dependants_chapters` migration and `src/membership/`):
+
+- `MemberStatus`: `PENDING → PROBATION/ACTIVE → GRACE → DEFAULTER/SUSPENDED → EXITED/DECEASED`. No automatic transitions yet — that's the rule engine's job (roadmap slice 3); this slice only adds the states and an explicit, audited way to move between them.
+- `MemberStatusChange` — an append-only audit row for every transition (including the very first one, at registration/join). This slice's contribution to §8.12's "audit is non-negotiable from day one," the same principle RLS followed from Phase 0.
+- `Dependant` (FR-MEM-03) — pre-registered, time-stamped beneficiary records. `POST /members/me/dependants` (self), `PATCH /members/me/dependants/:id/confirm`.
+- `Chapter` (FR-MEM-04) — optional per-tenant sub-grouping; most tenants won't use it. `POST /chapters`, `PATCH /members/:memberId/chapter` (both admin-only).
+- `PATCH /members/:memberId/status` (admin-only) — the audited transition endpoint.
+- `GET /members/me` — own membership + dependants + status history + chapter, all in one response.
+- FR-MEM-10: joining a *second* organisation prefills that org's `Dependant` records from the account's existing memberships, `confirmed: false` until explicitly re-confirmed there.
+
+"Admin-only" here is a placeholder inline role check (`Member.role === 'ADMIN'`), not real RBAC — see `requireAdmin()` in `membership.service.ts`. It'll be replaced outright by roadmap slice 6 (§13), not built out further before then.
 
 ## Project setup
 

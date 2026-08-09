@@ -10,6 +10,7 @@ import {
 import { AuthService } from './auth.service';
 import type { AuthTokenPayload } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
+import { JoinOrganisationDto } from './dto/join-organisation.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterOrganisationDto } from './dto/register-organisation.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -21,6 +22,11 @@ export class AuthController {
   @Post('register-organisation')
   registerOrganisation(@Body() dto: RegisterOrganisationDto) {
     return this.authService.registerOrganisation(dto);
+  }
+
+  @Post('join-organisation')
+  joinOrganisation(@Body() dto: JoinOrganisationDto) {
+    return this.authService.joinOrganisation(dto);
   }
 
   @Post('login')

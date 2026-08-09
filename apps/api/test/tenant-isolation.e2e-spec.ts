@@ -67,9 +67,14 @@ describe('Tenant isolation (RLS)', () => {
   });
 
   it('a freshly created, empty tenant sees itself and no members at all', async () => {
-    const [orgs, members] = await prisma.withTenant(emptyOrg.id, (tx) =>
-      Promise.all([tx.organisation.findMany(), tx.member.findMany()]),
-    );
+    // Sequential, not Promise.all: both share one connection via this
+    // interactive transaction's tx client, and pg doesn't support running
+    // two queries concurrently on the same connection.
+    const [orgs, members] = await prisma.withTenant(emptyOrg.id, async (tx) => {
+      const orgResults = await tx.organisation.findMany();
+      const memberResults = await tx.member.findMany();
+      return [orgResults, memberResults];
+    });
     expect(orgs.map((o) => o.id)).toEqual([emptyOrg.id]);
     expect(members).toHaveLength(0);
   });

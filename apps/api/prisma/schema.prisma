@@ -41,15 +41,43 @@ model Organisation {
   status    String   @default("trial")
   createdAt DateTime @default(now())
 
-  members Member[]
+  members  Member[]
+  chapters Chapter[]
 
   @@map("organisations")
 }
 
+// Optional sub-grouping within a tenant (FR-MEM-04's "chapters/campuses").
+// Most Phase 1 tenants won't use this — chapterId on Member stays nullable.
+model Chapter {
+  id             String   @id @default(uuid())
+  organisationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+  members      Member[]
+
+  @@index([organisationId])
+  @@map("chapters")
+}
+
+// FR-MEM-01. Deliberately no automatic transition logic here — the
+// "configurable per tenant entry/exit conditions" the spec asks for is rule
+// engine territory (§11, Phase 1 roadmap slice 3), not yet built. This slice
+// only adds the states themselves plus an explicit, audited way to move a
+// Member between them (MemberStatusChange) — the engine will drive those
+// transitions automatically once it exists; nothing here needs to change
+// when it does.
 enum MemberStatus {
+  PENDING
+  PROBATION
   ACTIVE
+  GRACE
+  DEFAULTER
   SUSPENDED
   EXITED
+  DECEASED
 }
 
 // Placeholder until the real RBAC model (Role/RoleAssignment, §13) exists —
@@ -71,15 +99,71 @@ model Member {
   id             String       @id @default(uuid())
   accountId      String
   organisationId String
+  chapterId      String?
   role           MemberRole   @default(MEMBER)
+  // FR-MEM-07: categories ineligible for contribution/benefit (e.g. contract
+  // staff) without needing a separate tenant. Free-form per-tenant string
+  // for now — the rule engine (§11) is what will actually read this to gate
+  // eligibility; this slice just makes sure the field exists on every row.
+  category       String       @default("standard")
   joinDate       DateTime     @default(now())
-  status         MemberStatus @default(ACTIVE)
+  status         MemberStatus @default(PENDING)
   createdAt      DateTime     @default(now())
 
-  account      Account      @relation(fields: [accountId], references: [id])
-  organisation Organisation @relation(fields: [organisationId], references: [id])
+  account       Account               @relation(fields: [accountId], references: [id])
+  organisation  Organisation          @relation(fields: [organisationId], references: [id])
+  chapter       Chapter?              @relation(fields: [chapterId], references: [id])
+  dependants    Dependant[]
+  statusChanges MemberStatusChange[]
 
   @@index([organisationId])
   @@index([accountId])
   @@map("members")
+}
+
+// FR-MEM-03: first-class, pre-registered, time-stamped dependant/beneficiary
+// records, so a bereavement claim can later be checked against a name
+// registered *before* the event. organisationId is denormalized from
+// Member.organisationId (rather than an RLS policy that joins through
+// Member) purely so this table can use the exact same simple, fast
+// tenant_isolation policy shape as every other tenant-scoped table.
+model Dependant {
+  id             String   @id @default(uuid())
+  memberId       String
+  organisationId String
+  relationship   String
+  name           String
+  registeredAt   DateTime @default(now())
+  // FR-MEM-10: a dependant copied over when an existing Account joins a
+  // *second* organisation starts unconfirmed — it must be explicitly
+  // re-confirmed before that org's claims can treat it as pre-registered.
+  // Dependants entered directly (the common case) are confirmed immediately.
+  confirmed      Boolean  @default(true)
+
+  member Member @relation(fields: [memberId], references: [id])
+
+  @@index([organisationId])
+  @@index([memberId])
+  @@map("dependants")
+}
+
+// Audit trail for every MemberStatus transition (§8.12 — audit is
+// non-negotiable from day one, not something to retrofit later; this is
+// this slice's contribution to that, same principle as RLS being
+// foundational since Phase 0). organisationId denormalized for RLS, same
+// reasoning as Dependant.
+model MemberStatusChange {
+  id             String        @id @default(uuid())
+  memberId       String
+  organisationId String
+  fromStatus     MemberStatus?
+  toStatus       MemberStatus
+  reason         String?
+  changedAt      DateTime      @default(now())
+
+  member Member @relation(fields: [memberId], references: [id])
+
+  @@index([organisationId])
+  @@index([memberId])
+  @@map("member_status_changes")
 }
