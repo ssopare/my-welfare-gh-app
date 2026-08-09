@@ -41,10 +41,21 @@ model Organisation {
   status    String   @default("trial")
   createdAt DateTime @default(now())
 
+  // FR-LEDGER-07: how an incoming payment is applied across a member's open
+  // Obligations. Only 'oldest_first' is actually implemented by
+  // LedgerService right now — see the note on ObligationService — but the
+  // field accepts the full spec vocabulary so choosing another value
+  // doesn't need a migration later, just an implementation.
+  paymentAllocationPolicy String @default("oldest_first")
+
   members           Member[]
   chapters          Chapter[]
   contributionPlans ContributionPlan[]
   benefitRules      BenefitRule[]
+  funds             Fund[]
+  ledgerAccounts    LedgerAccount[]
+  journalEntries    JournalEntry[]
+  obligations       Obligation[]
 
   @@map("organisations")
 }
@@ -114,11 +125,12 @@ model Member {
   status         MemberStatus @default(PENDING)
   createdAt      DateTime     @default(now())
 
-  account       Account               @relation(fields: [accountId], references: [id])
-  organisation  Organisation          @relation(fields: [organisationId], references: [id])
-  chapter       Chapter?              @relation(fields: [chapterId], references: [id])
+  account       Account              @relation(fields: [accountId], references: [id])
+  organisation  Organisation         @relation(fields: [organisationId], references: [id])
+  chapter       Chapter?             @relation(fields: [chapterId], references: [id])
   dependants    Dependant[]
   statusChanges MemberStatusChange[]
+  obligations   Obligation[]
 
   @@index([organisationId])
   @@index([accountId])
@@ -174,29 +186,42 @@ enum RuleStatus {
 // goodStandingRequired) rather than a separate EligibilityRule table,
 // matching the same worked-examples reasoning as above.
 model ContributionPlan {
-  id                  String     @id @default(uuid())
-  organisationId      String
-  chapterId           String?
-  name                String
-  cadence             String // "monthly" | "one_time" | "event_triggered" — free-form per tenant for now
-  computationType     String     @default("fixed")
-  amountValue         Decimal    @db.Decimal(12, 2)
-  currency            String
-  collectionMechanism String     @default("push") // "push" | "payroll" (FR-LED-02)
-  minTenureMonths     Int?
-  goodStandingRequired Boolean   @default(true)
-  status              RuleStatus @default(DRAFT)
-  effectiveFrom       DateTime?
-  effectiveTo         DateTime?
-  supersedesId        String?    @unique
-  createdBy           String // Member.id of the admin who created this version
-  approvedBy          String?
-  createdAt           DateTime   @default(now())
+  id                               String     @id @default(uuid())
+  organisationId                   String
+  chapterId                        String?
+  name                             String
+  cadence                          String // "monthly" | "one_time" | "event_triggered" — free-form per tenant for now
+  computationType                  String     @default("fixed")
+  amountValue                      Decimal    @db.Decimal(12, 2)
+  currency                         String
+  collectionMechanism              String     @default("push") // "push" | "payroll" (FR-LED-02)
+  // FR-LEDGER-06: "grace period" is at least four different things the
+  // source constitutions conflate under one term. minTenureMonths above is
+  // the *benefit* waiting period (a BenefitRule concern — UDS's 6-month
+  // rule). The three below are the contribution-side ones, independently
+  // configurable, deliberately not merged into one field:
+  //   - joiningGracePeriodDays: before a new member owes anything at all
+  //   - paymentGracePeriodDays: extra days after a due date before OVERDUE
+  //   - reinstatementWaitingPeriodMonths: after clearing arrears, before
+  //     benefits resume (a fresh probation, per AGAOSAS)
+  joiningGracePeriodDays           Int?
+  paymentGracePeriodDays           Int?
+  reinstatementWaitingPeriodMonths Int?
+  minTenureMonths                  Int?
+  goodStandingRequired             Boolean    @default(true)
+  status                           RuleStatus @default(DRAFT)
+  effectiveFrom                    DateTime?
+  effectiveTo                      DateTime?
+  supersedesId                     String?    @unique
+  createdBy                        String // Member.id of the admin who created this version
+  approvedBy                       String?
+  createdAt                        DateTime   @default(now())
 
   organisation Organisation      @relation(fields: [organisationId], references: [id])
   chapter      Chapter?          @relation(fields: [chapterId], references: [id])
   supersedes   ContributionPlan? @relation("ContributionPlanVersions", fields: [supersedesId], references: [id])
   supersededBy ContributionPlan? @relation("ContributionPlanVersions")
+  obligations  Obligation[]
 
   @@index([organisationId])
   @@map("contribution_plans")
@@ -219,19 +244,19 @@ model BenefitRule {
   amountValue                 Decimal    @db.Decimal(12, 2)
   currency                    String
   occurrenceCapScope          String     @default("lifetime")
-  occurrenceCapMax             Int
+  occurrenceCapMax            Int
   minTenureMonths             Int?
   goodStandingRequired        Boolean    @default(true)
   maxConsecutiveMissedPeriods Int?
   evidenceRequired            String[]
-  approvalChain                String[]
-  status                       RuleStatus @default(DRAFT)
-  effectiveFrom                DateTime?
-  effectiveTo                  DateTime?
-  supersedesId                 String?    @unique
-  createdBy                    String
-  approvedBy                   String?
-  createdAt                    DateTime   @default(now())
+  approvalChain               String[]
+  status                      RuleStatus @default(DRAFT)
+  effectiveFrom               DateTime?
+  effectiveTo                 DateTime?
+  supersedesId                String?    @unique
+  createdBy                   String
+  approvedBy                  String?
+  createdAt                   DateTime   @default(now())
 
   organisation Organisation @relation(fields: [organisationId], references: [id])
   chapter      Chapter?     @relation(fields: [chapterId], references: [id])
@@ -240,6 +265,171 @@ model BenefitRule {
 
   @@index([organisationId])
   @@map("benefit_rules")
+}
+
+// §12.1: every Fund owns its own chart of accounts. Most Phase 1 tenants
+// will have exactly one ("General Welfare Fund"), but §12.2 explicitly
+// requires supporting a single contribution split across several.
+model Fund {
+  id             String   @id @default(uuid())
+  organisationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organisation   Organisation    @relation(fields: [organisationId], references: [id])
+  ledgerAccounts LedgerAccount[]
+  journalEntries JournalEntry[]
+
+  @@index([organisationId])
+  @@map("funds")
+}
+
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  INCOME
+  EXPENSE
+  EQUITY
+}
+
+// §12.1's chart-of-accounts categories (cash/bank/mobile-money under
+// ASSET; benefits payable and member advance-payment credits under
+// LIABILITY; contributions/donations under INCOME; benefits paid under
+// EXPENSE). Named LedgerAccount, not Account, to avoid any confusion with
+// the login-identity `Account` model (Section 7) — completely unrelated
+// concepts that happen to share the word "account" in English.
+//
+// memberId is nullable and mostly unused in Phase 1: it's here so a
+// member's wallet (FR-LED-07/08) can eventually be modelled as their own
+// LIABILITY account without a schema change, per the spec's explicit
+// Phase 1 scope of "the wallet's liability-account *data model*" only —
+// the top-up feature itself is Phase 2, and nothing in this slice creates
+// or uses one yet.
+model LedgerAccount {
+  id             String            @id @default(uuid())
+  organisationId String
+  fundId         String
+  memberId       String?
+  type           LedgerAccountType
+  name           String
+  createdAt      DateTime          @default(now())
+
+  organisation Organisation  @relation(fields: [organisationId], references: [id])
+  fund         Fund          @relation(fields: [fundId], references: [id])
+  journalLines JournalLine[]
+
+  @@index([organisationId])
+  @@index([fundId])
+  @@map("ledger_accounts")
+}
+
+// §12.2, FR-LEDGER-01/02: every financial event posts exactly one
+// JournalEntry made of balanced JournalLines (sum(debit) = sum(credit)),
+// checked in LedgerService.postJournalEntry before insert — not by a DB
+// trigger, a deliberate simplicity-over-belt-and-braces tradeoff for this
+// slice. Once posted, never updated or deleted at the application layer;
+// LedgerService exposes no update/delete method at all, only
+// reverseJournalEntry (a new contra JournalEntry referencing this one via
+// reversalOfId — the correction, not an edit).
+//
+// sourceType/sourceId are a lightweight, un-enforced pointer to whatever
+// triggered this entry (e.g. sourceType "contribution_payment", sourceId an
+// Obligation id) — free-form rather than a real FK because the set of
+// possible sources grows with every future slice (Claims' disbursements,
+// eventually Payments' provider webhooks) and most of those don't exist
+// yet.
+model JournalEntry {
+  id             String   @id @default(uuid())
+  organisationId String
+  fundId         String
+  description    String
+  sourceType     String?
+  sourceId       String?
+  reversalOfId   String?
+  postedAt       DateTime @default(now())
+  createdBy      String // Member.id
+
+  organisation Organisation   @relation(fields: [organisationId], references: [id])
+  fund         Fund           @relation(fields: [fundId], references: [id])
+  reversalOf   JournalEntry?  @relation("JournalEntryReversals", fields: [reversalOfId], references: [id])
+  reversals    JournalEntry[] @relation("JournalEntryReversals")
+  lines        JournalLine[]
+
+  @@index([organisationId])
+  @@index([fundId])
+  @@map("journal_entries")
+}
+
+// Exactly one of debit/credit is non-zero per line — validated in
+// LedgerService, same reasoning as the entry-level balance check above.
+// obligationId is set when this line is (part of) settling a specific
+// Obligation, so a payment's allocation across multiple open obligations
+// (FR-LEDGER-07) is traceable per line, not just as a lump sum.
+model JournalLine {
+  id              String  @id @default(uuid())
+  journalEntryId  String
+  organisationId  String
+  ledgerAccountId String
+  memberId        String?
+  obligationId    String?
+  debit           Decimal @default(0) @db.Decimal(12, 2)
+  credit          Decimal @default(0) @db.Decimal(12, 2)
+
+  journalEntry  JournalEntry  @relation(fields: [journalEntryId], references: [id])
+  ledgerAccount LedgerAccount @relation(fields: [ledgerAccountId], references: [id])
+  obligation    Obligation?   @relation(fields: [obligationId], references: [id])
+
+  @@index([organisationId])
+  @@index([journalEntryId])
+  @@index([ledgerAccountId])
+  @@index([obligationId])
+  @@map("journal_lines")
+}
+
+// §12.4: obligation status is its own field, distinct from any payment — a
+// late payment settles the obligation financially without rewriting
+// whether it was originally on time; dueDate never changes once created.
+enum ObligationStatus {
+  UPCOMING
+  DUE
+  PAID
+  PARTIALLY_PAID
+  OVERDUE
+  DEFAULTED
+  WAIVED
+  EXEMPTED
+  WRITTEN_OFF
+  CANCELLED
+}
+
+// What a specific member owes for a specific period, per a ContributionPlan
+// — the persisted record that RuleEngineService.computeContributionObligation
+// (roadmap slice 3) feeds into. amountPaid is a running total updated as
+// JournalLines settle against this obligation; it is a convenience read,
+// not the source of truth — the source of truth is always the sum of
+// JournalLines referencing this obligation (same FR-LEDGER-05 principle
+// applied one level down from fund balances).
+model Obligation {
+  id                 String           @id @default(uuid())
+  organisationId     String
+  memberId           String
+  contributionPlanId String
+  dueDate            DateTime
+  amountValue        Decimal          @db.Decimal(12, 2)
+  currency           String
+  amountPaid         Decimal          @default(0) @db.Decimal(12, 2)
+  status             ObligationStatus @default(UPCOMING)
+  createdAt          DateTime         @default(now())
+
+  organisation     Organisation     @relation(fields: [organisationId], references: [id])
+  member           Member           @relation(fields: [memberId], references: [id])
+  contributionPlan ContributionPlan @relation(fields: [contributionPlanId], references: [id])
+  journalLines     JournalLine[]
+
+  @@index([organisationId])
+  @@index([memberId])
+  @@index([contributionPlanId])
+  @@map("obligations")
 }
 
 // Audit trail for every MemberStatus transition (§8.12 — audit is

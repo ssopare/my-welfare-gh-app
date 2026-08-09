@@ -87,6 +87,22 @@ Full lifecycle on top of the Phase 0 `Member` skeleton (FR-MEM-01/03/04/07 — s
 - `occurrenceCap`/`evidenceRequired`/`approvalChain` are captured as data now but **not enforced** — that needs Claims history to check against, and Claims doesn't exist until roadmap slice 7. Deliberately absent from the `checks` trace (not a fake always-passing entry) so nothing here reads as a real pass once Claims lands.
 - Rule simulator/sandbox (§11.4, FR-RULE-06) is explicitly deferred past Phase 1 per the spec's own roadmap table — not built.
 
+### Ledger (Phase 1, roadmap slice 4, §12)
+
+Real double-entry bookkeeping, not a payments table — see `src/ledger/`. Deliberately sequenced right after the rule engine so the two get proven together: a rule-engine-computed contribution amount becomes a persisted `Obligation`, and a recorded payment turns into a real, balanced accounting entry.
+
+- `POST /funds` (admin-only) — creates a `Fund` and auto-provisions its standard chart of accounts (`Cash`, `Contributions Income`, `Benefits Payable`, `Benefits Expense`, `Fund Equity` — §12.1's categories). No chart-of-accounts *builder* — five fixed accounts per fund is enough for Phase 1's actual loop.
+- `POST /contribution-plans/:planId/obligations` (admin-only, `{ memberId, dueDate }`) — calls `RuleEngineService.computeContributionObligation` and persists the result as an `Obligation` (`UPCOMING`/`DUE`/`PAID`/`PARTIALLY_PAID`/`OVERDUE`/... — §12.4's obligation-status lifecycle, kept distinct from payment: a late payment settles the obligation without rewriting that it was originally late).
+- `POST /payments/contribution` (self or admin, `{ memberId, fundId, amountValue, currency }`) — records that a payment was received (think: a treasurer entering cash/mobile-money they collected — this does **not** talk to a real payment provider yet, that's roadmap slice 5, which will call this same underlying logic from a gateway webhook instead of a manual entry). Applies the payment across the member's open obligations **oldest-first** (FR-LEDGER-07 — matches the "arrears before current dues" pattern every source constitution uses), updates each obligation's status, and posts one balanced `JournalEntry` in the *same* transaction — both succeed or both roll back together.
+- `GET /ledger-accounts/:id/balance` — always computed fresh from `SUM(journal lines)`, never a stored number (FR-LEDGER-05) — there's no balance column to accidentally edit.
+- `POST /journal-entries/:id/reverse` (admin-only) — the *only* way to correct a posted entry (FR-LEDGER-02): a new contra entry with every line's debit/credit swapped, referencing the original. Posted entries are otherwise immutable — `LedgerService` exposes no update or delete.
+
+**Scope choices, all deliberate:**
+- `paymentAllocationPolicy` on `Organisation` accepts the spec's full vocabulary (oldest-first, newest-first, current-period-first, member-selected, admin-selected, proportional — FR-LEDGER-07) but only `oldest_first` is implemented; anything else throws `NotImplementedException`.
+- §12.4's four distinct grace-period concepts are modelled as four separate fields, deliberately not merged into one: `BenefitRule.minTenureMonths` is the *benefit* waiting period (UDS's 6-month rule); `ContributionPlan.joiningGracePeriodDays`/`paymentGracePeriodDays`/`reinstatementWaitingPeriodMonths` are the three *contribution*-side ones (FR-LEDGER-06). Captured as data now; nothing evaluates them yet — that's the automatic-transition logic still owed to `MemberStatus` (see the Membership section above).
+- A member's `LedgerAccount` (the wallet's liability-account data model, FR-LED-07) is a real, ready field — but nothing in this slice creates or credits one. An overpayment beyond a member's open obligations is rejected outright rather than silently becoming an unaccounted-for credit.
+- Reconciliation (§12.3) and Disbursement Authorization + income/expense entries (§12.5) are both out of Phase 1 per the spec's own roadmap table — the former needs a real payment provider to reconcile against (slice 5), the latter is explicitly deferred to Phase 2.
+
 ## Project setup
 
 ```bash
