@@ -69,7 +69,23 @@ Full lifecycle on top of the Phase 0 `Member` skeleton (FR-MEM-01/03/04/07 — s
 - `GET /members/me` — own membership + dependants + status history + chapter, all in one response.
 - FR-MEM-10: joining a *second* organisation prefills that org's `Dependant` records from the account's existing memberships, `confirmed: false` until explicitly re-confirmed there.
 
-"Admin-only" here is a placeholder inline role check (`Member.role === 'ADMIN'`), not real RBAC — see `requireAdmin()` in `membership.service.ts`. It'll be replaced outright by roadmap slice 6 (§13), not built out further before then.
+"Admin-only" here is a placeholder inline role check (`Member.role === 'ADMIN'`), not real RBAC — see `requireAdmin()` in `src/common/access.util.ts` (shared with the rule engine module below).
+
+### Rule engine (Phase 1, roadmap slice 3, §11)
+
+`ContributionPlan` (what a member owes) and `BenefitRule` (what a member/dependant is entitled to on a trigger event) — see `src/rule-engine/`. Deliberately **not** a separate `RuleVersion` wrapper table: the spec's own worked examples (§11.2/§11.3) put `effective_from`/`supersedes`/`created_by`/`approved_by` directly on the rule object itself, so each row here already *is* one immutable version (FR-RULE-02) — an amendment is a new `DRAFT` row with `supersedesId` pointing at the version it replaces, activated via its own endpoint, never an edit.
+
+- `POST /contribution-plans` / `POST /benefit-rules` (admin-only) — create a `DRAFT`.
+- `POST .../:id/activate` (admin-only, optional `{ effectiveFrom }`) — `DRAFT → ACTIVE`; if `supersedesId` was set at creation, the predecessor (must currently be `ACTIVE`) transitions to `SUPERSEDED` with `effectiveTo` set to the new version's `effectiveFrom`.
+- `POST .../:id/reject` (admin-only) — `DRAFT → REJECTED`, terminal; a draft/rejected rule "stays in that state indefinitely, never auto-activates on a timer" per the spec.
+- `GET /contribution-plans` / `GET /benefit-rules` (`?asOf=<ISO date>`, default now) — the `ACTIVE` version in force on that date.
+- `POST /contribution-plans/:id/compute-obligation` and `POST /benefit-rules/:id/evaluate-eligibility` (self or admin) — the actual engine. See `RuleEngineService`.
+
+**Scope choices, all deliberate:**
+- Fixed amounts only (`computationType: "fixed"`) — the only kind evidenced by the source constitutions' worked examples. Anything else throws `NotImplementedException` rather than silently mis-computing.
+- Eligibility explanation is FR-RULE-05's actual requirement, not an afterthought: `evaluateBenefitEligibility` returns `{ eligible, checks: [{ description, passed, detail }], amount? }`, and the good-standing check reads the member's status **as it stood on the event date** from `MemberStatusChange` (slice 2's audit trail) — not today's current status. §11.1: "eligibility is evaluated against ... the rule version in force on [the event] date, never against whichever date happens to be convenient."
+- `occurrenceCap`/`evidenceRequired`/`approvalChain` are captured as data now but **not enforced** — that needs Claims history to check against, and Claims doesn't exist until roadmap slice 7. Deliberately absent from the `checks` trace (not a fake always-passing entry) so nothing here reads as a real pass once Claims lands.
+- Rule simulator/sandbox (§11.4, FR-RULE-06) is explicitly deferred past Phase 1 per the spec's own roadmap table — not built.
 
 ## Project setup
 

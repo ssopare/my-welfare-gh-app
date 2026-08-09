@@ -41,8 +41,10 @@ model Organisation {
   status    String   @default("trial")
   createdAt DateTime @default(now())
 
-  members  Member[]
-  chapters Chapter[]
+  members           Member[]
+  chapters          Chapter[]
+  contributionPlans ContributionPlan[]
+  benefitRules      BenefitRule[]
 
   @@map("organisations")
 }
@@ -55,8 +57,10 @@ model Chapter {
   name           String
   createdAt      DateTime @default(now())
 
-  organisation Organisation @relation(fields: [organisationId], references: [id])
-  members      Member[]
+  organisation      Organisation       @relation(fields: [organisationId], references: [id])
+  members           Member[]
+  contributionPlans ContributionPlan[]
+  benefitRules      BenefitRule[]
 
   @@index([organisationId])
   @@map("chapters")
@@ -145,6 +149,97 @@ model Dependant {
   @@index([organisationId])
   @@index([memberId])
   @@map("dependants")
+}
+
+// FR-RULE-01/02: every contribution obligation and benefit entitlement is a
+// versioned, effective-dated, tenant-scoped configuration record — never
+// deleted or overwritten. Deliberately NOT a separate RuleVersion table
+// wrapping these: the spec's own worked examples (§11.2/11.3) put
+// effective_from/supersedes/created_by/approved_by directly on the rule
+// object itself, so each row here already *is* one immutable version; an
+// amendment is a new row with supersedesId pointing at the one it replaces,
+// not an edit. RuleStatus is shared by both rule types.
+enum RuleStatus {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+  REJECTED
+}
+
+// FR-LED-01/02: what a member owes. Phase 1 scope: fixed-amount only
+// (computationType exists as a field so a future percentage/formula type
+// doesn't need a migration, but only "fixed" is actually evaluated —
+// RuleEngineService throws rather than silently mis-computing anything
+// else). Eligibility is flattened onto the rule itself (minTenureMonths,
+// goodStandingRequired) rather than a separate EligibilityRule table,
+// matching the same worked-examples reasoning as above.
+model ContributionPlan {
+  id                  String     @id @default(uuid())
+  organisationId      String
+  chapterId           String?
+  name                String
+  cadence             String // "monthly" | "one_time" | "event_triggered" — free-form per tenant for now
+  computationType     String     @default("fixed")
+  amountValue         Decimal    @db.Decimal(12, 2)
+  currency            String
+  collectionMechanism String     @default("push") // "push" | "payroll" (FR-LED-02)
+  minTenureMonths     Int?
+  goodStandingRequired Boolean   @default(true)
+  status              RuleStatus @default(DRAFT)
+  effectiveFrom       DateTime?
+  effectiveTo         DateTime?
+  supersedesId        String?    @unique
+  createdBy           String // Member.id of the admin who created this version
+  approvedBy          String?
+  createdAt           DateTime   @default(now())
+
+  organisation Organisation      @relation(fields: [organisationId], references: [id])
+  chapter      Chapter?          @relation(fields: [chapterId], references: [id])
+  supersedes   ContributionPlan? @relation("ContributionPlanVersions", fields: [supersedesId], references: [id])
+  supersededBy ContributionPlan? @relation("ContributionPlanVersions")
+
+  @@index([organisationId])
+  @@map("contribution_plans")
+}
+
+// FR-RULE-04, FR-MEM-03's counterpart on the entitlement side: what a
+// member/dependant is entitled to when a trigger event occurs. occurrenceCap
+// fields are captured now but NOT enforced by RuleEngineService yet — that
+// requires querying prior Claims, and Claims don't exist until roadmap
+// slice 7. Same for approvalChain: stored as an ordered list of stage names
+// (matching §11.2/11.3's worked JSON exactly) but not wired to anything
+// executable until Claims routes through it.
+model BenefitRule {
+  id                          String     @id @default(uuid())
+  organisationId              String
+  chapterId                   String?
+  name                        String
+  triggerEvent                String // e.g. "member.birth", "dependant.death"
+  subjectTypes                String[] // e.g. ["self"] or ["spouse","child","parent"]
+  amountValue                 Decimal    @db.Decimal(12, 2)
+  currency                    String
+  occurrenceCapScope          String     @default("lifetime")
+  occurrenceCapMax             Int
+  minTenureMonths             Int?
+  goodStandingRequired        Boolean    @default(true)
+  maxConsecutiveMissedPeriods Int?
+  evidenceRequired            String[]
+  approvalChain                String[]
+  status                       RuleStatus @default(DRAFT)
+  effectiveFrom                DateTime?
+  effectiveTo                  DateTime?
+  supersedesId                 String?    @unique
+  createdBy                    String
+  approvedBy                   String?
+  createdAt                    DateTime   @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+  chapter      Chapter?     @relation(fields: [chapterId], references: [id])
+  supersedes   BenefitRule? @relation("BenefitRuleVersions", fields: [supersedesId], references: [id])
+  supersededBy BenefitRule? @relation("BenefitRuleVersions")
+
+  @@index([organisationId])
+  @@map("benefit_rules")
 }
 
 // Audit trail for every MemberStatus transition (§8.12 — audit is

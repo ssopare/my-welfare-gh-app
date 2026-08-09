@@ -1,24 +1,11 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthTokenPayload } from '../auth/auth.service';
+import { requireAdmin } from '../common/access.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddDependantDto } from './dto/add-dependant.dto';
 import { ChangeStatusDto } from './dto/change-status.dto';
 import { CreateChapterDto } from './dto/create-chapter.dto';
 import { TransferChapterDto } from './dto/transfer-chapter.dto';
-
-// RBAC is still a placeholder (Member.role ADMIN/MEMBER — see the real
-// model's slot in the Phase 1 roadmap, §13). These inline role checks are
-// deliberately minimal and will be replaced outright when that slice lands,
-// not built out into a bigger guard/decorator framework ahead of it.
-function requireAdmin(actor: AuthTokenPayload) {
-  if (actor.role !== 'ADMIN') {
-    throw new ForbiddenException('Only an organisation admin can do this');
-  }
-}
 
 @Injectable()
 export class MembershipService {

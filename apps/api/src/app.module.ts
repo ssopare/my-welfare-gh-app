@@ -4,9 +4,10 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { MembershipModule } from './membership/membership.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RuleEngineModule } from './rule-engine/rule-engine.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, MembershipModule],
+  imports: [PrismaModule, AuthModule, MembershipModule, RuleEngineModule],
   controllers: [AppController],
   providers: [AppService],
 })
