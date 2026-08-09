@@ -41,12 +41,17 @@ export class RbacService {
     return roleIdsByName;
   }
 
+  // governanceBodyId is intentionally not on AssignRoleDto/the public
+  // assignRole() below — only GovernanceService.appointOfficer (which
+  // enforces FR-GOV-02's term limits before calling this) sets it, so
+  // there's no route that grants a governance-scoped assignment without
+  // that check running first.
   async assignRoleInTx(
     tx: Prisma.TransactionClient,
     organisationId: string,
     memberId: string,
     roleId: string,
-    options?: { chapterId?: string; termEnd?: Date },
+    options?: { chapterId?: string; governanceBodyId?: string; termEnd?: Date },
   ) {
     return tx.roleAssignment.create({
       data: {
@@ -54,6 +59,7 @@ export class RbacService {
         memberId,
         roleId,
         chapterId: options?.chapterId,
+        governanceBodyId: options?.governanceBodyId,
         termEnd: options?.termEnd,
       },
     });

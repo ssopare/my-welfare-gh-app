@@ -85,6 +85,27 @@ export class MembershipService {
           reason: dto.reason,
         },
       });
+
+      // FR-GOV-02: "auto-flag a role as vacant when its holder's
+      // membership status changes to Exited or Deceased." Scoped to
+      // governance-body-linked assignments only (officer seats) — ending
+      // an ordinary RBAC role like the baseline "Member" grant isn't a
+      // vacancy in any meaningful sense. A direct update, not a call into
+      // GovernanceModule — this is a targeted side effect of *membership*
+      // status changing, not governance domain logic, so it doesn't need
+      // GovernanceService injected here.
+      if (dto.status === 'EXITED' || dto.status === 'DECEASED') {
+        const now = new Date();
+        await tx.roleAssignment.updateMany({
+          where: {
+            memberId,
+            governanceBodyId: { not: null },
+            OR: [{ termEnd: null }, { termEnd: { gt: now } }],
+          },
+          data: { termEnd: now },
+        });
+      }
+
       return updated;
     });
   }

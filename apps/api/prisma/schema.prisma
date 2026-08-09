@@ -67,6 +67,7 @@ model Organisation {
   roleAssignments          RoleAssignment[]
   claims                   Claim[]
   defaulterPolicy          DefaulterPolicy?
+  governanceBodies         GovernanceBody[]
 
   @@map("organisations")
 }
@@ -555,25 +556,71 @@ model Role {
 // it's passed. Revoking an open-ended assignment early sets termEnd rather
 // than deleting the row — "member X held role Y from date A to date B" is
 // a historical fact worth keeping, same reasoning as MemberStatusChange.
+//
+// governanceBodyId (roadmap: Governance, §8.3) mirrors chapterId exactly,
+// matching the spec's own data-model line: "RoleAssignment links Member x
+// Role x Governance Body." Each row here already *is* one term of office —
+// no separate "Term" table — GovernanceService.appointOfficer reads a
+// member's own prior rows for a (role, governanceBody) pair to enforce
+// FR-GOV-02's term limits/cooling-off, the same "each row is a version"
+// reasoning ContributionPlan/BenefitRule use. Deliberately NOT exposed on
+// the generic POST /roles/:id/assignments endpoint/AssignRoleDto — only
+// GovernanceService.appointOfficer (which enforces term limits) can set
+// it, so there's no bypass route around that check.
 model RoleAssignment {
-  id             String    @id @default(uuid())
-  organisationId String
-  memberId       String
-  roleId         String
-  chapterId      String?
-  termStart      DateTime  @default(now())
-  termEnd        DateTime?
-  createdAt      DateTime  @default(now())
+  id               String    @id @default(uuid())
+  organisationId   String
+  memberId         String
+  roleId           String
+  chapterId        String?
+  governanceBodyId String?
+  termStart        DateTime  @default(now())
+  termEnd          DateTime?
+  createdAt        DateTime  @default(now())
 
-  organisation Organisation @relation(fields: [organisationId], references: [id])
-  member       Member       @relation(fields: [memberId], references: [id])
-  role         Role         @relation(fields: [roleId], references: [id])
-  chapter      Chapter?     @relation(fields: [chapterId], references: [id])
+  organisation   Organisation    @relation(fields: [organisationId], references: [id])
+  member         Member          @relation(fields: [memberId], references: [id])
+  role           Role            @relation(fields: [roleId], references: [id])
+  chapter        Chapter?        @relation(fields: [chapterId], references: [id])
+  governanceBody GovernanceBody? @relation(fields: [governanceBodyId], references: [id])
 
   @@index([organisationId])
   @@index([memberId])
   @@index([roleId])
+  @@index([governanceBodyId])
   @@map("role_assignments")
+}
+
+// §8.3, FR-GOV-01/02, Phase 1 scope only per the roadmap table:
+// governance bodies, term limits, role vacancy handling. FR-GOV-03/04
+// (motions/minutes/votes, "vote of no confidence") are explicitly Phase 2
+// — "officers can be recorded administratively at first; full governance
+// workflow isn't on the path to proving the contribution/benefit loop."
+// membershipCompositionRule/quorumRule/tieBreakRule/meetingCadence are
+// free-form strings, not a structured formula — nothing in Phase 1
+// evaluates them (no Meeting/Motion model exists yet to check a quorum
+// against), same "captured as data, not yet enforced" pattern as
+// BenefitRule.occurrenceCap before the Claims slice existed to consume it.
+// maxConsecutiveTerms/coolingOffPeriodMonths, by contrast, ARE enforced —
+// see GovernanceService.appointOfficer — because FR-GOV-02 lists term
+// limits as in-scope now, not deferred.
+model GovernanceBody {
+  id                        String   @id @default(uuid())
+  organisationId            String
+  name                      String
+  membershipCompositionRule String?
+  quorumRule                String?
+  tieBreakRule              String?
+  meetingCadence            String?
+  maxConsecutiveTerms       Int?
+  coolingOffPeriodMonths    Int?
+  createdAt                 DateTime @default(now())
+
+  organisation    Organisation     @relation(fields: [organisationId], references: [id])
+  roleAssignments RoleAssignment[]
+
+  @@index([organisationId])
+  @@map("governance_bodies")
 }
 
 // Audit trail for every MemberStatus transition (§8.12 — audit is

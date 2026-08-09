@@ -4,6 +4,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { ClaimsModule } from './claims/claims.module';
 import { DefaulterModule } from './defaulter/defaulter.module';
+import { GovernanceModule } from './governance/governance.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { MembershipModule } from './membership/membership.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -24,6 +25,7 @@ import { RuleEngineModule } from './rule-engine/rule-engine.module';
     ClaimsModule,
     DefaulterModule,
     ReportingModule,
+    GovernanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],
