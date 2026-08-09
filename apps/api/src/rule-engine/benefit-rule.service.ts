@@ -1,20 +1,25 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { requireAdmin } from '../common/access.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { RbacService } from '../rbac/rbac.service';
 import { ActivateRuleDto } from './dto/activate-rule.dto';
 import { CreateBenefitRuleDto } from './dto/create-benefit-rule.dto';
 
 @Injectable()
 export class BenefitRuleService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rbac: RbacService,
+  ) {}
 
   async create(actor: AuthTokenPayload, dto: CreateBenefitRuleDto) {
-    requireAdmin(actor);
+    await requireAdmin(this.rbac, actor);
     return this.prisma.withTenant(actor.organisationId, (tx) =>
       tx.benefitRule.create({
         data: {
@@ -40,9 +45,9 @@ export class BenefitRuleService {
   }
 
   // See ContributionPlanService.activate for the versioning/supersession
-  // reasoning — identical shape, different model.
+  // and maker-checker reasoning — identical shape, different model.
   async activate(actor: AuthTokenPayload, id: string, dto: ActivateRuleDto) {
-    requireAdmin(actor);
+    await requireAdmin(this.rbac, actor);
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       const rule = await tx.benefitRule.findUnique({ where: { id } });
       if (!rule) {
@@ -53,6 +58,19 @@ export class BenefitRuleService {
           `Cannot activate a rule in ${rule.status} status`,
         );
       }
+
+      const organisation = await tx.organisation.findUnique({
+        where: { id: actor.organisationId },
+      });
+      if (
+        organisation?.makerCheckerEnabled &&
+        rule.createdBy === actor.memberId
+      ) {
+        throw new ForbiddenException(
+          'Maker-checker is enabled for this organisation: the member who created this rule cannot also activate it',
+        );
+      }
+
       const effectiveFrom = dto.effectiveFrom
         ? new Date(dto.effectiveFrom)
         : new Date();
@@ -83,7 +101,7 @@ export class BenefitRuleService {
   }
 
   async reject(actor: AuthTokenPayload, id: string) {
-    requireAdmin(actor);
+    await requireAdmin(this.rbac, actor);
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       const rule = await tx.benefitRule.findUnique({ where: { id } });
       if (!rule) {

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { requireAdmin } from '../common/access.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { RbacService } from '../rbac/rbac.service';
 import { AddDependantDto } from './dto/add-dependant.dto';
 import { ChangeStatusDto } from './dto/change-status.dto';
 import { CreateChapterDto } from './dto/create-chapter.dto';
@@ -9,7 +10,10 @@ import { TransferChapterDto } from './dto/transfer-chapter.dto';
 
 @Injectable()
 export class MembershipService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rbac: RbacService,
+  ) {}
 
   async getOwnMembership(actor: AuthTokenPayload) {
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
@@ -62,7 +66,7 @@ export class MembershipService {
     memberId: string,
     dto: ChangeStatusDto,
   ) {
-    requireAdmin(actor);
+    await requireAdmin(this.rbac, actor);
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       const member = await tx.member.findUnique({ where: { id: memberId } });
       if (!member) {
@@ -86,7 +90,7 @@ export class MembershipService {
   }
 
   async createChapter(actor: AuthTokenPayload, dto: CreateChapterDto) {
-    requireAdmin(actor);
+    await requireAdmin(this.rbac, actor);
     return this.prisma.withTenant(actor.organisationId, (tx) =>
       tx.chapter.create({
         data: { organisationId: actor.organisationId, name: dto.name },
@@ -99,7 +103,7 @@ export class MembershipService {
     memberId: string,
     dto: TransferChapterDto,
   ) {
-    requireAdmin(actor);
+    await requireAdmin(this.rbac, actor);
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       // Sequential, not Promise.all: both queries share one connection via
       // this interactive transaction's tx client, and pg doesn't support

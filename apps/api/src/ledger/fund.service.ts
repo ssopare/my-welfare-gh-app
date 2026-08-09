@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { requireAdmin } from '../common/access.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { RbacService } from '../rbac/rbac.service';
 import { CreateFundDto } from './dto/create-fund.dto';
 
 // §12.1's standard categories, provisioned automatically whenever a Fund is
@@ -18,10 +19,13 @@ const STANDARD_CHART_OF_ACCOUNTS = [
 
 @Injectable()
 export class FundService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rbac: RbacService,
+  ) {}
 
   async create(actor: AuthTokenPayload, dto: CreateFundDto) {
-    requireAdmin(actor);
+    await requireAdmin(this.rbac, actor);
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       const fund = await tx.fund.create({
         data: { organisationId: actor.organisationId, name: dto.name },

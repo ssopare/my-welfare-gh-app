@@ -1,21 +1,43 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { AuthTokenPayload } from '../auth/auth.service';
+import type { RbacService } from '../rbac/rbac.service';
 
-// RBAC is still a placeholder (Member.role ADMIN/MEMBER — see the real
-// model's slot in the Phase 1 roadmap, §13). These inline checks are
-// deliberately minimal and will be replaced outright when that slice lands,
-// not built out into a bigger guard/decorator framework ahead of it.
-export function requireAdmin(actor: AuthTokenPayload) {
-  if (actor.role !== 'ADMIN') {
+// Real RBAC now (§13, roadmap slice 6) — a live, DB-backed check via
+// RbacService, never Member.role or the AuthTokenPayload.role JWT claim
+// (see the schema comment on MemberRole for why that field is no longer
+// trusted for authorization). Signatures deliberately stayed close to the
+// old placeholder's shape — an added `rbac` parameter, `await` at each
+// call site — rather than a bigger guard/decorator rewrite, so this
+// migration touches every existing call site mechanically instead of
+// restructuring where each check happens.
+export async function requireAdmin(
+  rbac: RbacService,
+  actor: AuthTokenPayload,
+): Promise<void> {
+  if (
+    !(await rbac.hasWildcardAdminPermission(
+      actor.organisationId,
+      actor.memberId,
+    ))
+  ) {
     throw new ForbiddenException('Only an organisation admin can do this');
   }
 }
 
-export function requireSelfOrAdmin(
+export async function requireSelfOrAdmin(
+  rbac: RbacService,
   actor: AuthTokenPayload,
   targetMemberId: string,
-) {
-  if (actor.memberId !== targetMemberId && actor.role !== 'ADMIN') {
+): Promise<void> {
+  if (actor.memberId === targetMemberId) {
+    return;
+  }
+  if (
+    !(await rbac.hasWildcardAdminPermission(
+      actor.organisationId,
+      actor.memberId,
+    ))
+  ) {
     throw new ForbiddenException(
       'Can only do this for yourself unless you are an admin',
     );

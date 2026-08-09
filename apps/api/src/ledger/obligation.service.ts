@@ -8,6 +8,7 @@ import { Prisma } from '../../generated/prisma/client';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { requireAdmin, requireSelfOrAdmin } from '../common/access.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { RbacService } from '../rbac/rbac.service';
 import { RuleEngineService } from '../rule-engine/rule-engine.service';
 import { CreateObligationDto } from './dto/create-obligation.dto';
 import { RecordContributionPaymentDto } from './dto/record-contribution-payment.dto';
@@ -21,6 +22,7 @@ export class ObligationService {
     private readonly prisma: PrismaService,
     private readonly ruleEngine: RuleEngineService,
     private readonly ledger: LedgerService,
+    private readonly rbac: RbacService,
   ) {}
 
   // The "prove them together" moment the roadmap called for: the rule
@@ -31,7 +33,7 @@ export class ObligationService {
     contributionPlanId: string,
     dto: CreateObligationDto,
   ) {
-    requireAdmin(actor);
+    await requireAdmin(this.rbac, actor);
     const dueDate = new Date(dto.dueDate);
     const computed = await this.ruleEngine.computeContributionObligation(
       actor.organisationId,
@@ -55,7 +57,7 @@ export class ObligationService {
   }
 
   async listForMember(actor: AuthTokenPayload, memberId: string) {
-    requireSelfOrAdmin(actor, memberId);
+    await requireSelfOrAdmin(this.rbac, actor, memberId);
     return this.prisma.withTenant(actor.organisationId, (tx) =>
       tx.obligation.findMany({
         where: { memberId },
@@ -72,7 +74,7 @@ export class ObligationService {
     actor: AuthTokenPayload,
     dto: RecordContributionPaymentDto,
   ) {
-    requireSelfOrAdmin(actor, dto.memberId);
+    await requireSelfOrAdmin(this.rbac, actor, dto.memberId);
     return this.prisma.withTenant(actor.organisationId, (tx) =>
       this.recordContributionPaymentInTx(
         tx,

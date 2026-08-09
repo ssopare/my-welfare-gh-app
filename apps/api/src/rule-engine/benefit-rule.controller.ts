@@ -11,6 +11,7 @@ import type { AuthTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { requireSelfOrAdmin } from '../common/access.util';
+import { RbacService } from '../rbac/rbac.service';
 import { BenefitRuleService } from './benefit-rule.service';
 import { ActivateRuleDto } from './dto/activate-rule.dto';
 import { CreateBenefitRuleDto } from './dto/create-benefit-rule.dto';
@@ -23,6 +24,7 @@ export class BenefitRuleController {
   constructor(
     private readonly rules: BenefitRuleService,
     private readonly ruleEngine: RuleEngineService,
+    private readonly rbac: RbacService,
   ) {}
 
   @Post()
@@ -56,12 +58,12 @@ export class BenefitRuleController {
   }
 
   @Post(':id/evaluate-eligibility')
-  evaluateEligibility(
+  async evaluateEligibility(
     @CurrentUser() user: AuthTokenPayload,
     @Param('id') id: string,
     @Body() dto: EvaluateEligibilityDto,
   ) {
-    requireSelfOrAdmin(user, dto.memberId);
+    await requireSelfOrAdmin(this.rbac, user, dto.memberId);
     return this.ruleEngine.evaluateBenefitEligibility(
       user.organisationId,
       id,

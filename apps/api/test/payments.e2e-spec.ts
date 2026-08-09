@@ -83,6 +83,12 @@ describe('Payments (e2e)', () => {
   afterAll(async () => {
     for (const organisationId of createdOrgIds) {
       await prisma.withTenant(organisationId, (tx) =>
+        tx.roleAssignment.deleteMany({ where: { organisationId } }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
+        tx.role.deleteMany({ where: { organisationId } }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
         tx.reconciliationException.deleteMany({ where: { organisationId } }),
       );
       await prisma.withTenant(organisationId, (tx) =>

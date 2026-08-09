@@ -8,6 +8,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { RbacService } from '../rbac/rbac.service';
 import { JoinOrganisationDto } from './dto/join-organisation.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterOrganisationDto } from './dto/register-organisation.dto';
@@ -26,6 +27,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly rbac: RbacService,
   ) {}
 
   async registerOrganisation(dto: RegisterOrganisationDto) {
@@ -69,6 +71,26 @@ export class AuthService {
           reason: 'Founding admin at tenant self-registration',
         },
       });
+
+      // §13.2: a fresh tenant gets real, assignable roles from day one,
+      // not an empty role list — and the founding admin's actual
+      // authorization now comes from holding this RoleAssignment, not
+      // from Member.role (see the schema comment on MemberRole).
+      const roleIdsByName = await this.rbac.seedStarterRolesInTx(
+        tx,
+        organisation.id,
+      );
+      const orgAdminRoleId = roleIdsByName.get('Org Admin');
+      if (!orgAdminRoleId) {
+        throw new Error('Org Admin starter role template failed to seed');
+      }
+      await this.rbac.assignRoleInTx(
+        tx,
+        organisation.id,
+        created.id,
+        orgAdminRoleId,
+      );
+
       return created;
     });
 
@@ -175,6 +197,25 @@ export class AuthService {
               confirmed: false,
             },
           });
+        }
+
+        // The starter templates were already seeded when this org was
+        // created (registerOrganisation), so joining just looks up the
+        // existing "Member" template rather than reseeding anything.
+        const memberRole = await tx.role.findFirst({
+          where: {
+            organisationId: dto.organisationId,
+            name: 'Member',
+            isTemplate: true,
+          },
+        });
+        if (memberRole) {
+          await this.rbac.assignRoleInTx(
+            tx,
+            dto.organisationId,
+            created.id,
+            memberRole.id,
+          );
         }
 
         return created;

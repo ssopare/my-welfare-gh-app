@@ -69,7 +69,7 @@ Full lifecycle on top of the Phase 0 `Member` skeleton (FR-MEM-01/03/04/07 — s
 - `GET /members/me` — own membership + dependants + status history + chapter, all in one response.
 - FR-MEM-10: joining a *second* organisation prefills that org's `Dependant` records from the account's existing memberships, `confirmed: false` until explicitly re-confirmed there.
 
-"Admin-only" here is a placeholder inline role check (`Member.role === 'ADMIN'`), not real RBAC — see `requireAdmin()` in `src/common/access.util.ts` (shared with the rule engine module below).
+"Admin-only" here means `requireAdmin()` in `src/common/access.util.ts` — a real, live RBAC permission check as of roadmap slice 6 (see the RBAC section below), not the placeholder `Member.role === 'ADMIN'` field this originally shipped with.
 
 ### Rule engine (Phase 1, roadmap slice 3, §11)
 
@@ -116,6 +116,21 @@ A real payment is asynchronous — initiating one doesn't complete it:
 - **No cross-tenant lookup needed:** a real aggregator lets you attach metadata to a payment request that gets echoed back in its webhook — this app uses that for `organisationId`, so the webhook handler always runs inside a normal, single-tenant `withTenant` context. If the claimed org and the actual `providerReference` don't line up (including a `providerReference` that genuinely belongs to a *different* tenant), RLS means the lookup simply finds nothing — same "unmatched" path as a typo'd reference, never a leak.
 
 **Deliberately out of Phase 1**, per the spec's own roadmap table: payroll-deduction ingestion (FR-PAY-02), proxy payment (FR-PAY-05), and wallet-funded payment (FR-PAY-06).
+
+### RBAC (Phase 1, roadmap slice 6, §13)
+
+Replaces the placeholder `Member.role` ADMIN/MEMBER check every earlier slice used with a real, live permission system — see `src/rbac/`. `RoleController` lives in its own `RoleModule` rather than inside `RbacModule` itself, specifically to avoid a circular dependency (`RbacModule` needs no imports at all, so `AuthModule`, `MembershipModule`, `RuleEngineModule`, `LedgerModule`, and `PaymentsModule` can all import it for `RbacService` without any of them cycling back through `AuthModule`).
+
+- **Permission** = `{ resource, action, scope }` (§13.1), stored as a JSON array on `Role` rather than a normalized catalog table — the action vocabulary is explicitly open-ended and parameterized (`approve_stage:<n>`), so a fixed enum would either be incomplete or need constant migrations.
+- **Role** = a named bundle of permissions. Every new `Organisation` gets the 7 starter templates from §13.2's illustrative matrix seeded automatically (Org Admin, Treasurer, Committee Chair, Convener, Patron, Auditor, Member) — a fresh tenant has real, assignable roles from day one, not an empty list. `isTemplate` is informational only; a tenant can freely clone or diverge from any of them.
+- **RoleAssignment** = Member × Role × optional Chapter × term. The founding admin gets an Org Admin assignment at registration; a joining member gets a Member assignment automatically (FR-MEM-09). `termEnd` is what makes FR-AUD-01's time-boxed Auditor role possible — set it at assignment time and the grant simply stops counting once it's passed. Revoking early sets `termEnd = now()` rather than deleting the row, so "member X held role Y from date A to date B" stays a reconstructable fact (FR-AUD-02), same reasoning as `MemberStatusChange`.
+- **The actual check (`RbacService.hasPermission`) is live and DB-backed, never a cached or JWT-derived claim.** Revoking a role — or letting a time-boxed one lapse — takes effect on the very next request, not after some token expires; proven by a test that grants a member Org Admin mid-session (no new token), confirms an admin-only action now succeeds, revokes it, and confirms the *same* token is locked out again immediately.
+- `'*'` on either `resource` or `action` matches anything — how the Org Admin template represents "full" access without a separate is-super-admin flag.
+- `POST /roles` / `GET /roles` (admin-only to create, org-visible to list) — no role-*builder* UI (explicitly deferred past Phase 1 per the spec), just the raw create-with-permissions-array API.
+- `POST /roles/:roleId/assignments` / `PATCH /role-assignments/:id/revoke` (admin-only) / `GET /members/:memberId/roles` (self or admin).
+- **Maker-checker (§13.1, opt-in via `Organisation.makerCheckerEnabled`, off by default)** — wired into a real, already-existing enforcement point rather than left as inert config: `ContributionPlanService`/`BenefitRuleService`'s `activate()` now blocks the same member who created a rule from also being its sole approver, using the `createdBy`/`approvedBy` fields those already had. "Some very small groups genuinely have only one active officer," per the spec, so it's off unless a tenant turns it on.
+
+`Member.role`/`MemberRole` (ADMIN/MEMBER) still exist in the schema and the JWT's `role` claim is still populated the same way — kept for response-shape stability, not read for any access-control decision anymore.
 
 ## Project setup
 

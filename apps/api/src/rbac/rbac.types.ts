@@ -1,0 +1,124 @@
+// §13.1: Permission = (resource, action, scope). Stored as a JSON array on
+// Role rather than a normalized catalog table — see the schema comment on
+// Role for why (the action vocabulary is open-ended and parameterized,
+// e.g. approve_stage:<n>).
+export interface Permission {
+  resource: string;
+  action: string;
+  scope: 'own' | 'chapter' | 'organisation';
+}
+
+// What "requireAdmin" actually checks for now: a role holding blanket
+// access, exactly matching the old Member.role === 'ADMIN' placeholder's
+// behavior, but as a real, live, revocable grant instead of a static
+// field. '*' matches any resource/action in RbacService.hasPermission.
+export const WILDCARD_ADMIN_PERMISSION: Permission = {
+  resource: '*',
+  action: '*',
+  scope: 'organisation',
+};
+
+// §13.2's illustrative matrix, seeded per-tenant at registration
+// (RbacService.seedStarterRolesInTx) so a fresh org has real roles to
+// assign from day one. isTemplate is informational only — a tenant is
+// free to clone or diverge from any of these without a code change.
+//
+// Several resource/action pairs here (claim.*, ledger.disburse,
+// ledger.co_sign_disbursement) don't have an enforcement point wired up
+// yet — Claims doesn't exist until roadmap slice 7, and Disbursement
+// Authorization (§12.5) is deferred to Phase 2. Seeding the *data* now,
+// correctly shaped per the spec's own matrix, means those future slices
+// consume it rather than redesign it — the same "primitive now" pattern
+// as everywhere else in this build.
+export const STARTER_ROLE_TEMPLATES: {
+  name: string;
+  permissions: Permission[];
+}[] = [
+  {
+    name: 'Org Admin',
+    permissions: [WILDCARD_ADMIN_PERMISSION],
+  },
+  {
+    name: 'Treasurer',
+    permissions: [
+      {
+        resource: 'contribution_plan',
+        action: 'create',
+        scope: 'organisation',
+      },
+      {
+        resource: 'contribution_plan',
+        action: 'activate',
+        scope: 'organisation',
+      },
+      { resource: 'benefit_rule', action: 'create', scope: 'organisation' },
+      { resource: 'benefit_rule', action: 'activate', scope: 'organisation' },
+      {
+        resource: 'claim',
+        action: 'approve_stage:final',
+        scope: 'organisation',
+      },
+      { resource: 'ledger', action: 'disburse', scope: 'organisation' },
+      { resource: 'ledger', action: 'view', scope: 'organisation' },
+      { resource: 'member', action: 'view_financial', scope: 'organisation' },
+      { resource: 'audit', action: 'export', scope: 'organisation' },
+    ],
+  },
+  {
+    name: 'Committee Chair',
+    permissions: [
+      {
+        resource: 'contribution_plan',
+        action: 'create',
+        scope: 'organisation',
+      },
+      { resource: 'benefit_rule', action: 'create', scope: 'organisation' },
+      {
+        resource: 'claim',
+        action: 'approve_stage:committee',
+        scope: 'organisation',
+      },
+      { resource: 'member', action: 'view', scope: 'organisation' },
+    ],
+  },
+  {
+    name: 'Convener',
+    permissions: [
+      { resource: 'claim', action: 'approve_stage:verify', scope: 'chapter' },
+      { resource: 'member', action: 'view', scope: 'chapter' },
+    ],
+  },
+  {
+    name: 'Patron',
+    permissions: [
+      {
+        resource: 'claim',
+        action: 'approve_stage:sign_off',
+        scope: 'organisation',
+      },
+      {
+        resource: 'ledger',
+        action: 'co_sign_disbursement',
+        scope: 'organisation',
+      },
+      { resource: 'member', action: 'view', scope: 'organisation' },
+    ],
+  },
+  {
+    name: 'Auditor',
+    permissions: [
+      { resource: 'claim', action: 'view', scope: 'organisation' },
+      { resource: 'member', action: 'view', scope: 'organisation' },
+      { resource: 'ledger', action: 'view', scope: 'organisation' },
+      { resource: 'audit', action: 'export', scope: 'organisation' },
+    ],
+  },
+  {
+    name: 'Member',
+    permissions: [
+      { resource: 'claim', action: 'view', scope: 'own' },
+      { resource: 'claim', action: 'create', scope: 'own' },
+      { resource: 'member', action: 'view', scope: 'own' },
+    ],
+  },
+];

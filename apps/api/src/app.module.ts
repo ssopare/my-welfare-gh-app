@@ -6,6 +6,7 @@ import { LedgerModule } from './ledger/ledger.module';
 import { MembershipModule } from './membership/membership.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RoleModule } from './rbac/role.module';
 import { RuleEngineModule } from './rule-engine/rule-engine.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { RuleEngineModule } from './rule-engine/rule-engine.module';
     RuleEngineModule,
     LedgerModule,
     PaymentsModule,
+    RoleModule,
   ],
   controllers: [AppController],
   providers: [AppService],

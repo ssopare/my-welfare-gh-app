@@ -48,6 +48,11 @@ model Organisation {
   // doesn't need a migration later, just an implementation.
   paymentAllocationPolicy String @default("oldest_first")
 
+  // §13.1: "an optional but recommended constraint per tenant, not a
+  // hardcoded universal rule, since some very small groups genuinely have
+  // only one active officer." Off by default for exactly that reason.
+  makerCheckerEnabled Boolean @default(false)
+
   members                  Member[]
   chapters                 Chapter[]
   contributionPlans        ContributionPlan[]
@@ -58,6 +63,8 @@ model Organisation {
   obligations              Obligation[]
   paymentIntents           PaymentIntent[]
   reconciliationExceptions ReconciliationException[]
+  roles                    Role[]
+  roleAssignments          RoleAssignment[]
 
   @@map("organisations")
 }
@@ -74,6 +81,7 @@ model Chapter {
   members           Member[]
   contributionPlans ContributionPlan[]
   benefitRules      BenefitRule[]
+  roleAssignments   RoleAssignment[]
 
   @@index([organisationId])
   @@map("chapters")
@@ -97,10 +105,13 @@ enum MemberStatus {
   DECEASED
 }
 
-// Placeholder until the real RBAC model (Role/RoleAssignment, §13) exists —
-// just enough to mark the founding admin from tenant self-registration
-// (FR-ONB-01). Not a Role/permission system; don't build on this expecting
-// it to grow into one, replace it outright when §13 is implemented.
+// Superseded by RoleAssignment (§13, roadmap slice 6) as the actual
+// authorization source — access.util.ts's requireAdmin/requireSelfOrAdmin
+// now run a live RbacService check, never trusting this field or the
+// AuthTokenPayload.role JWT claim derived from it. Kept only so the
+// founding-admin-vs-joiner distinction stays visible on the row itself and
+// the JWT shape stays stable for existing callers; not read for any
+// access-control decision anymore.
 enum MemberRole {
   ADMIN
   MEMBER
@@ -127,13 +138,14 @@ model Member {
   status         MemberStatus @default(PENDING)
   createdAt      DateTime     @default(now())
 
-  account        Account              @relation(fields: [accountId], references: [id])
-  organisation   Organisation         @relation(fields: [organisationId], references: [id])
-  chapter        Chapter?             @relation(fields: [chapterId], references: [id])
-  dependants     Dependant[]
-  statusChanges  MemberStatusChange[]
-  obligations    Obligation[]
-  paymentIntents PaymentIntent[]
+  account         Account              @relation(fields: [accountId], references: [id])
+  organisation    Organisation         @relation(fields: [organisationId], references: [id])
+  chapter         Chapter?             @relation(fields: [chapterId], references: [id])
+  dependants      Dependant[]
+  statusChanges   MemberStatusChange[]
+  obligations     Obligation[]
+  paymentIntents  PaymentIntent[]
+  roleAssignments RoleAssignment[]
 
   @@index([organisationId])
   @@index([accountId])
@@ -500,6 +512,61 @@ model ReconciliationException {
 
   @@index([organisationId])
   @@map("reconciliation_exceptions")
+}
+
+// §13.1: a Permission is a (resource, action, scope) triple. Kept as a
+// JSON array on Role rather than a normalized Permission catalog table —
+// the action vocabulary is explicitly open-ended and parameterized
+// (`approve_stage:<n>` for an arbitrary claim-approval stage), so a fixed
+// enum/catalog would either be incomplete or need constant migrations.
+// Shape (documented, not DB-enforced): { resource: string, action: string,
+// scope: "own" | "chapter" | "organisation" }[] — see RbacService.
+model Role {
+  id             String   @id @default(uuid())
+  organisationId String
+  name           String
+  // True for the 7 starter templates seeded per §13.2 (Org Admin,
+  // Treasurer, Committee Chair, Convener, Patron, Auditor, Member) —
+  // informational only; templates aren't otherwise special-cased, so a
+  // tenant can freely clone or diverge from one without any code change.
+  isTemplate     Boolean  @default(false)
+  permissions    Json
+  createdAt      DateTime @default(now())
+
+  organisation Organisation     @relation(fields: [organisationId], references: [id])
+  assignments  RoleAssignment[]
+
+  @@index([organisationId])
+  @@map("roles")
+}
+
+// Member x Role x optional Chapter scope x term (§13.1) — "the same person
+// can be Convener for one chapter and an ordinary Member everywhere else"
+// is two separate rows, not a field on Member. termEnd is what makes
+// FR-AUD-01's time-boxed Auditor role possible: set it at assignment time
+// and the grant simply stops counting in RbacService.hasPermission once
+// it's passed. Revoking an open-ended assignment early sets termEnd rather
+// than deleting the row — "member X held role Y from date A to date B" is
+// a historical fact worth keeping, same reasoning as MemberStatusChange.
+model RoleAssignment {
+  id             String    @id @default(uuid())
+  organisationId String
+  memberId       String
+  roleId         String
+  chapterId      String?
+  termStart      DateTime  @default(now())
+  termEnd        DateTime?
+  createdAt      DateTime  @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+  member       Member       @relation(fields: [memberId], references: [id])
+  role         Role         @relation(fields: [roleId], references: [id])
+  chapter      Chapter?     @relation(fields: [chapterId], references: [id])
+
+  @@index([organisationId])
+  @@index([memberId])
+  @@index([roleId])
+  @@map("role_assignments")
 }
 
 // Audit trail for every MemberStatus transition (§8.12 — audit is

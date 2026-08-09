@@ -4,6 +4,7 @@ import type { AuthTokenPayload } from '../auth/auth.service';
 import { requireAdmin, requireSelfOrAdmin } from '../common/access.util';
 import { ObligationService } from '../ledger/obligation.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RbacService } from '../rbac/rbac.service';
 import { InitiateContributionPaymentDto } from './dto/initiate-contribution-payment.dto';
 import { WebhookPayloadDto } from './dto/webhook-payload.dto';
 import { PAYMENT_PROVIDER } from './providers/payment-provider.interface';
@@ -14,6 +15,7 @@ export class PaymentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly obligations: ObligationService,
+    private readonly rbac: RbacService,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
@@ -24,7 +26,7 @@ export class PaymentService {
     actor: AuthTokenPayload,
     dto: InitiateContributionPaymentDto,
   ) {
-    requireSelfOrAdmin(actor, dto.memberId);
+    await requireSelfOrAdmin(this.rbac, actor, dto.memberId);
 
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       // Placeholder, globally unique, satisfies the not-null unique
@@ -146,18 +148,27 @@ export class PaymentService {
   }
 
   async findOne(actor: AuthTokenPayload, id: string) {
-    return this.prisma.withTenant(actor.organisationId, async (tx) => {
-      const intent = await tx.paymentIntent.findUnique({ where: { id } });
-      if (!intent) {
-        throw new NotFoundException('Payment intent not found');
-      }
-      requireSelfOrAdmin(actor, intent.memberId);
-      return intent;
-    });
+    // Fetched in its own, already-closed transaction before the
+    // requireSelfOrAdmin check runs — that check itself opens a
+    // transaction via RbacService, and Prisma's interactive transactions
+    // don't nest, so the permission check can't happen from inside the
+    // withTenant callback that first learns intent.memberId.
+    const intent = await this.prisma.withTenant(
+      actor.organisationId,
+      async (tx) => {
+        const found = await tx.paymentIntent.findUnique({ where: { id } });
+        if (!found) {
+          throw new NotFoundException('Payment intent not found');
+        }
+        return found;
+      },
+    );
+    await requireSelfOrAdmin(this.rbac, actor, intent.memberId);
+    return intent;
   }
 
   async listReconciliationExceptions(actor: AuthTokenPayload) {
-    requireAdmin(actor);
+    await requireAdmin(this.rbac, actor);
     return this.prisma.withTenant(actor.organisationId, (tx) =>
       tx.reconciliationException.findMany({
         where: { resolvedAt: null },
@@ -167,7 +178,7 @@ export class PaymentService {
   }
 
   async resolveReconciliationException(actor: AuthTokenPayload, id: string) {
-    requireAdmin(actor);
+    await requireAdmin(this.rbac, actor);
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       const exception = await tx.reconciliationException.findUnique({
         where: { id },

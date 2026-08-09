@@ -11,6 +11,7 @@ import type { AuthTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { requireSelfOrAdmin } from '../common/access.util';
+import { RbacService } from '../rbac/rbac.service';
 import { ContributionPlanService } from './contribution-plan.service';
 import { ActivateRuleDto } from './dto/activate-rule.dto';
 import { ComputeObligationDto } from './dto/compute-obligation.dto';
@@ -23,6 +24,7 @@ export class ContributionPlanController {
   constructor(
     private readonly plans: ContributionPlanService,
     private readonly ruleEngine: RuleEngineService,
+    private readonly rbac: RbacService,
   ) {}
 
   @Post()
@@ -56,12 +58,12 @@ export class ContributionPlanController {
   }
 
   @Post(':id/compute-obligation')
-  computeObligation(
+  async computeObligation(
     @CurrentUser() user: AuthTokenPayload,
     @Param('id') id: string,
     @Body() dto: ComputeObligationDto,
   ) {
-    requireSelfOrAdmin(user, dto.memberId);
+    await requireSelfOrAdmin(this.rbac, user, dto.memberId);
     return this.ruleEngine.computeContributionObligation(
       user.organisationId,
       id,

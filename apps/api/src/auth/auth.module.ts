@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { RbacModule } from '../rbac/rbac.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -16,6 +17,7 @@ if (!jwtSecret) {
       secret: jwtSecret,
       signOptions: { expiresIn: '1d' },
     }),
+    RbacModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard],
