@@ -9,6 +9,7 @@ import { MembershipModule } from './membership/membership.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RoleModule } from './rbac/role.module';
+import { ReportingModule } from './reporting/reporting.module';
 import { RuleEngineModule } from './rule-engine/rule-engine.module';
 
 @Module({
@@ -22,6 +23,7 @@ import { RuleEngineModule } from './rule-engine/rule-engine.module';
     RoleModule,
     ClaimsModule,
     DefaulterModule,
+    ReportingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

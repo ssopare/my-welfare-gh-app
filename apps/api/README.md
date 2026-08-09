@@ -155,6 +155,17 @@ Phase 1 scope per the roadmap table is FR-DEF-01/02 only — threshold-based sta
 - **Fixed a gap from the ledger slice along the way:** `ContributionPlan.joiningGracePeriodDays`/`paymentGracePeriodDays`/`reinstatementWaitingPeriodMonths` existed on the schema since slice 4 but were never exposed on `CreateContributionPlanDto` — silently stripped by the global `whitelist: true` validation pipe. Added here since this slice is the first thing that actually needs them to work.
 - FR-DEF-02's oldest-arrears-first payment allocation was already built in the ledger slice (`ObligationService.recordContributionPaymentInTx`) — this slice's contribution is tying automatic status *restoration* to it, not the allocation itself.
 
+### Reporting (Phase 1, roadmap slice 9, §16)
+
+The last planned Phase 1 slice — everything before this produced the data; this slice only reads it. Phase 1 scope per the roadmap table is four reports: contribution summary, member statement, defaulter register, disbursement report. §16 lists eight more (forecasting/solvency, income/expense registers, wallet statement, governance compliance, audit export...) — all explicitly Phase 2. See `src/reporting/`.
+
+Every report here is a pure query over `Obligation`/`JournalLine`/`Claim` rows earlier slices already wrote — §8.9's own requirement: "reporting is a query layer over the immutable ledger and claim history, not a parallel data entry surface." No new tables, no migration for this slice.
+
+- `GET /reports/contribution-summary` (`?planId=&from=&to=`, `ledger:view` permission) — expected (`sum(Obligation.amountValue)`) vs. collected (`sum(Obligation.amountPaid)`), grouped by plan and chapter. Grouped in application code on `Prisma.Decimal`, not a SQL `GROUP BY` — the group count per tenant is small (plans × chapters), and this keeps the arithmetic off whatever precision the driver would apply summing `DECIMAL` columns itself.
+- `GET /members/:memberId/statement` (self or admin) — full obligation history, every `JournalLine` touching this member (both contribution payments and benefit disbursements — the same line shape covers both), claims, current status + `MemberStatusChange` history, and a derived `paidThroughDate`: the latest due date of an *unbroken* run of `PAID` obligations from the member's earliest one. The first gap ends the run — mirrors `DefaulterService`'s missed-period streak logic, just counting paid instead of missed.
+- `GET /reports/defaulter-register` (`ledger:view` permission) — one row per (member, contribution plan) for every member currently `DEFAULTER`/`SUSPENDED`, with `consecutiveMissedCount` and `arrearsOwed`. Calls `DefaulterService.getConsecutiveMissedCount` directly rather than re-deriving the number, so the register can never disagree with what an actual reassessment would decide.
+- `GET /reports/disbursements` (`?from=&to=`, `ledger:view` permission) — every `PAID` claim: amount, beneficiary, benefit type, and its full `ClaimStageAction` approver trail (actor, decision, timestamp per stage). Everything this needed already existed because of how the Claims slice wired approval and disbursement together — nothing new to compute.
+
 ## Project setup
 
 ```bash

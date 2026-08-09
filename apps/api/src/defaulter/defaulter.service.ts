@@ -95,8 +95,11 @@ export class DefaulterService {
   // oldest, stopping at the first one that's settled (or not due yet under
   // the plan's payment grace period). A purely query-time computation, not
   // a stored counter — nothing here depends on an OVERDUE status ever
-  // having been set by a job that doesn't exist.
-  private async getConsecutiveMissedCount(
+  // having been set by a job that doesn't exist. Not private: the
+  // reporting slice's defaulter register reuses this exact computation
+  // rather than re-deriving it, so the register can never disagree with
+  // what reassessInTx itself would decide.
+  async getConsecutiveMissedCount(
     tx: Prisma.TransactionClient,
     memberId: string,
     contributionPlanId: string,
