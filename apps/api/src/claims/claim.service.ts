@@ -170,7 +170,9 @@ export class ClaimService {
   async findOne(actor: AuthTokenPayload, id: string) {
     const claim = await this.findClaimOrThrow(actor, id);
     if (actor.memberId !== claim.memberId) {
-      await this.requireClaimVisibility(actor);
+      await this.requireClaimVisibility(actor, {
+        targetChapterId: claim.member.chapterId ?? undefined,
+      });
     }
     return claim;
   }
@@ -181,7 +183,27 @@ export class ClaimService {
   // every stage rather than differentiating who may approve *which* stage
   // — see the comment on STARTER_ROLE_TEMPLATES for why.
   async decide(actor: AuthTokenPayload, claimId: string, dto: DecideClaimDto) {
-    await requirePermission(this.rbac, actor, 'claim', 'approve');
+    // Fetched (and its own transaction closed) before the permission check
+    // — chapter-scoped approve grants (e.g. Convener) need the claim's
+    // member's chapterId to check against, and RbacService.hasPermission
+    // opens its own withTenant, which can't nest inside this one (the same
+    // "fetch outside, then check, then write" pattern as addEvidence).
+    const claimForContext = await this.prisma.withTenant(
+      actor.organisationId,
+      async (tx) => {
+        const claim = await tx.claim.findUnique({
+          where: { id: claimId },
+          include: { member: true },
+        });
+        if (!claim) {
+          throw new NotFoundException('Claim not found');
+        }
+        return claim;
+      },
+    );
+    await requirePermission(this.rbac, actor, 'claim', 'approve', {
+      targetChapterId: claimForContext.member.chapterId ?? undefined,
+    });
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       const claim = await tx.claim.findUnique({ where: { id: claimId } });
       if (!claim) {
@@ -316,7 +338,7 @@ export class ClaimService {
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       const claim = await tx.claim.findUnique({
         where: { id },
-        include: { evidence: true, stageActions: true },
+        include: { evidence: true, stageActions: true, member: true },
       });
       if (!claim) {
         throw new NotFoundException('Claim not found');
@@ -327,20 +349,29 @@ export class ClaimService {
 
   // Org-wide claim visibility (the register list, or viewing someone
   // else's claim) belongs to whoever can either audit claims or is in the
-  // approval chain for them — not just admins.
-  private async requireClaimVisibility(actor: AuthTokenPayload) {
+  // approval chain for them — not just admins. `targetChapterId` lets a
+  // chapter-scoped grant (Convener) see a specific claim from their own
+  // chapter; omitted for the unfiltered list() call, where there's no
+  // single chapter to check against and only an organisation-scoped grant
+  // should be able to see everything at once.
+  private async requireClaimVisibility(
+    actor: AuthTokenPayload,
+    context: { targetChapterId?: string } = {},
+  ) {
     const [canView, canApprove] = await Promise.all([
       this.rbac.hasPermission(
         actor.organisationId,
         actor.memberId,
         'claim',
         'view',
+        context,
       ),
       this.rbac.hasPermission(
         actor.organisationId,
         actor.memberId,
         'claim',
         'approve',
+        context,
       ),
     ]);
     if (!canView && !canApprove) {

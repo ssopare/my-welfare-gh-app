@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import type { RbacService } from '../rbac/rbac.service';
+import type { PermissionContext } from '../rbac/rbac.types';
 
 // Real RBAC now (§13, roadmap slice 6) — a live, DB-backed check via
 // RbacService, never Member.role or the AuthTokenPayload.role JWT claim
@@ -49,11 +50,18 @@ export async function requireSelfOrAdmin(
 // via a real grant. hasPermission already treats the wildcard admin
 // permission as matching any resource/action, so this alone is sufficient
 // without a separate requireAdmin fallback.
+//
+// `context` is what makes a chapter/own-scoped grant actually mean
+// something — pass targetChapterId/targetMemberId when the caller has
+// them (see PermissionContext). Omitting it only lets an
+// organisation-scoped grant through, which is the correct, safe default
+// for a check with no specific target (e.g. an unfiltered org-wide list).
 export async function requirePermission(
   rbac: RbacService,
   actor: AuthTokenPayload,
   resource: string,
   action: string,
+  context?: PermissionContext,
 ): Promise<void> {
   if (
     !(await rbac.hasPermission(
@@ -61,6 +69,7 @@ export async function requirePermission(
       actor.memberId,
       resource,
       action,
+      context,
     ))
   ) {
     throw new ForbiddenException(`Missing permission: ${resource}:${action}`);

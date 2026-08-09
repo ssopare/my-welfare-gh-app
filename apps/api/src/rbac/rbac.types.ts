@@ -8,6 +8,24 @@ export interface Permission {
   scope: 'own' | 'chapter' | 'organisation';
 }
 
+// What a caller passes to RbacService.hasPermission so scope can actually
+// be checked against something. The rule (see hasPermission): 'organisation'
+// always matches; 'own' matches only if targetMemberId is supplied and
+// equals the actor; 'chapter' matches only if targetChapterId is supplied
+// and equals the *assignment's* chapterId (not the actor's own chapter —
+// a Convener's grant is scoped to the chapter their RoleAssignment names,
+// same as "the same person can be Convener for one chapter and an
+// ordinary Member everywhere else" from the RoleAssignment schema comment).
+// Omitting a field — or the whole context — means only 'organisation'-
+// scoped permissions can satisfy the check, which is what makes an
+// unscoped call (e.g. "list every claim in the org") correctly require
+// org-wide access rather than silently being satisfiable by a narrower
+// chapter/own-scoped grant that has no single target to check against.
+export interface PermissionContext {
+  targetMemberId?: string;
+  targetChapterId?: string;
+}
+
 // What "requireAdmin" actually checks for now: a role holding blanket
 // access, exactly matching the old Member.role === 'ADMIN' placeholder's
 // behavior, but as a real, live, revocable grant instead of a static

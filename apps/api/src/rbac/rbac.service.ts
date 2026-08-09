@@ -9,7 +9,7 @@ import type { AuthTokenPayload } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
-import type { Permission } from './rbac.types';
+import type { Permission, PermissionContext } from './rbac.types';
 import {
   STARTER_ROLE_TEMPLATES,
   WILDCARD_ADMIN_PERMISSION,
@@ -65,11 +65,20 @@ export class RbacService {
   // request, not after some token expires. '*' on either field matches
   // anything, which is how the Org Admin template represents "full"
   // access (§13.2) without a separate is-super-admin flag.
+  //
+  // Scope (§13.1) is checked here too, against whatever `context` the
+  // caller supplies — see the comment on PermissionContext for the exact
+  // matching rule. `scope: 'organisation'` always passes regardless of
+  // context, which is *why* WILDCARD_ADMIN_PERMISSION (scope
+  // 'organisation') keeps working everywhere unchanged: requireAdmin/
+  // requireSelfOrAdmin's admin fallback never needed to pass a context and
+  // still doesn't.
   async hasPermission(
     organisationId: string,
     memberId: string,
     resource: string,
     action: string,
+    context: PermissionContext = {},
   ): Promise<boolean> {
     return this.prisma.withTenant(organisationId, async (tx) => {
       const now = new Date();
@@ -84,11 +93,27 @@ export class RbacService {
       return assignments.some((assignment) => {
         const permissions = assignment.role
           .permissions as unknown as Permission[];
-        return permissions.some(
-          (p) =>
-            (p.resource === '*' || p.resource === resource) &&
-            (p.action === '*' || p.action === action),
-        );
+        return permissions.some((p) => {
+          if (!(p.resource === '*' || p.resource === resource)) return false;
+          if (!(p.action === '*' || p.action === action)) return false;
+          switch (p.scope) {
+            case 'organisation':
+              return true;
+            case 'own':
+              return (
+                context.targetMemberId !== undefined &&
+                context.targetMemberId === memberId
+              );
+            case 'chapter':
+              return (
+                assignment.chapterId != null &&
+                context.targetChapterId !== undefined &&
+                assignment.chapterId === context.targetChapterId
+              );
+            default:
+              return false;
+          }
+        });
       });
     });
   }

@@ -39,11 +39,6 @@ interface RoleResponse {
   name: string;
 }
 
-interface RoleAssignmentResponse {
-  id: string;
-  roleId: string;
-}
-
 interface ClaimResponse {
   id: string;
   status: string;
@@ -122,6 +117,9 @@ describe('Claims (e2e)', () => {
       );
       await prisma.withTenant(organisationId, (tx) =>
         tx.member.deleteMany({ where: { organisationId } }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
+        tx.chapter.deleteMany({ where: { organisationId } }),
       );
       await prisma.withTenant(organisationId, (tx) =>
         tx.organisation.delete({ where: { id: organisationId } }),
@@ -246,6 +244,57 @@ describe('Claims (e2e)', () => {
       .post(`/roles/${treasurerRole?.id}/assignments`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ memberId })
+      .expect(201);
+  }
+
+  interface ChapterResponse {
+    id: string;
+    name: string;
+  }
+
+  async function createChapter(
+    adminToken: string,
+    name: string,
+  ): Promise<ChapterResponse> {
+    const res = await request(app.getHttpServer())
+      .post('/chapters')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name })
+      .expect(201);
+    return res.body as ChapterResponse;
+  }
+
+  async function assignChapter(
+    adminToken: string,
+    memberId: string,
+    chapterId: string,
+  ) {
+    await request(app.getHttpServer())
+      .patch(`/members/${memberId}/chapter`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ chapterId })
+      .expect(200);
+  }
+
+  // Grants the Convener template (claim:approve at scope 'chapter') tied
+  // to a specific chapter — the RBAC hardening pass's whole point: this
+  // grant should only ever apply to claims from members in *this* chapter.
+  async function grantConvener(
+    adminToken: string,
+    memberId: string,
+    chapterId: string,
+  ) {
+    const rolesRes = await request(app.getHttpServer())
+      .get('/roles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const convenerRole = (rolesRes.body as RoleResponse[]).find(
+      (r) => r.name === 'Convener',
+    );
+    await request(app.getHttpServer())
+      .post(`/roles/${convenerRole?.id}/assignments`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ memberId, chapterId })
       .expect(201);
   }
 
@@ -517,24 +566,10 @@ describe('Claims (e2e)', () => {
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200);
 
-    // An ordinary member normally holds the Member template's own-scope
-    // claim:view — RbacService.hasPermission doesn't enforce *scope* yet
-    // (documented limitation, see rbac.types.ts), so that alone would
-    // technically pass here. Revoke it to prove findOne's check is a real,
-    // live permission gate: with no matching grant at all, access is
-    // denied.
-    const assignmentsRes = await request(app.getHttpServer())
-      .get(`/members/${otherMember.identity.memberId}/roles`)
-      .set('Authorization', `Bearer ${admin.accessToken}`)
-      .expect(200);
-    const memberAssignment = (
-      assignmentsRes.body as RoleAssignmentResponse[]
-    )[0];
-    await request(app.getHttpServer())
-      .patch(`/role-assignments/${memberAssignment.id}/revoke`)
-      .set('Authorization', `Bearer ${admin.accessToken}`)
-      .expect(200);
-
+    // An ordinary member holds the Member template's own-scope claim:view
+    // — scoped to *their own* claims, so it does not extend to someone
+    // else's, even within the same organisation (RbacService.hasPermission
+    // enforces scope for real — see the RBAC hardening pass).
     await request(app.getHttpServer())
       .get(`/claims/${claim.id}`)
       .set('Authorization', `Bearer ${otherMember.accessToken}`)
@@ -553,5 +588,94 @@ describe('Claims (e2e)', () => {
     expect(
       (listRes.body as ClaimResponse[]).some((c) => c.id === claim.id),
     ).toBe(true);
+  });
+
+  it('a chapter-scoped Convener can decide a claim from their own chapter but not from another', async () => {
+    const admin = await registerOrganisation('Claims Chapter Scope Org');
+    const chapterA = await createChapter(admin.accessToken, 'Chapter A');
+    const chapterB = await createChapter(admin.accessToken, 'Chapter B');
+    const memberA = await joinOrganisation(admin.identity.organisationId);
+    const memberB = await joinOrganisation(admin.identity.organisationId);
+    const convener = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, memberA.identity.memberId, 'ACTIVE');
+    await setStatus(admin.accessToken, memberB.identity.memberId, 'ACTIVE');
+    await assignChapter(
+      admin.accessToken,
+      memberA.identity.memberId,
+      chapterA.id,
+    );
+    await assignChapter(
+      admin.accessToken,
+      memberB.identity.memberId,
+      chapterB.id,
+    );
+    // Convener's grant is scoped to chapter A only.
+    await grantConvener(
+      admin.accessToken,
+      convener.identity.memberId,
+      chapterA.id,
+    );
+
+    const rule = await createActiveBenefitRule(admin.accessToken, {
+      approvalChain: ['convener_verify'],
+    });
+
+    const claimARes = await request(app.getHttpServer())
+      .post(`/benefit-rules/${rule.id}/claims`)
+      .set('Authorization', `Bearer ${memberA.accessToken}`)
+      .send({
+        memberId: memberA.identity.memberId,
+        eventDate: new Date().toISOString(),
+      })
+      .expect(201);
+    const claimA = claimARes.body as ClaimResponse;
+
+    const claimBRes = await request(app.getHttpServer())
+      .post(`/benefit-rules/${rule.id}/claims`)
+      .set('Authorization', `Bearer ${memberB.accessToken}`)
+      .send({
+        memberId: memberB.identity.memberId,
+        eventDate: new Date().toISOString(),
+      })
+      .expect(201);
+    const claimB = claimBRes.body as ClaimResponse;
+
+    // Chapter A's claim: the Convener's scope matches — allowed.
+    const decideARes = await request(app.getHttpServer())
+      .post(`/claims/${claimA.id}/decide`)
+      .set('Authorization', `Bearer ${convener.accessToken}`)
+      .send({ decision: 'APPROVE' })
+      .expect(201);
+    expect((decideARes.body as ClaimResponse).status).toBe('APPROVED');
+
+    // Chapter B's claim: same Convener, same permission, wrong chapter —
+    // blocked. This is the actual behavior change from the RBAC hardening
+    // pass; before it, any claim:approve holder could decide any claim
+    // regardless of scope.
+    await request(app.getHttpServer())
+      .post(`/claims/${claimB.id}/decide`)
+      .set('Authorization', `Bearer ${convener.accessToken}`)
+      .send({ decision: 'APPROVE' })
+      .expect(403);
+
+    // Same reasoning applies to reading a single claim, not just deciding
+    // one.
+    await request(app.getHttpServer())
+      .get(`/claims/${claimA.id}`)
+      .set('Authorization', `Bearer ${convener.accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`/claims/${claimB.id}`)
+      .set('Authorization', `Bearer ${convener.accessToken}`)
+      .expect(403);
+
+    // The org-wide register, with no single chapter to scope against,
+    // requires an organisation-scoped grant — a chapter-scoped Convener
+    // cannot list every claim in the org, even though they can act within
+    // their own chapter.
+    await request(app.getHttpServer())
+      .get('/claims')
+      .set('Authorization', `Bearer ${convener.accessToken}`)
+      .expect(403);
   });
 });
