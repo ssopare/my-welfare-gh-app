@@ -48,6 +48,26 @@ export class PrismaService
   }
 
   /**
+   * Runs `fn` with the Postgres session variable `app.account_id` set for
+   * that transaction only — the `own_memberships` RLS policy on members
+   * reads it via `current_setting('app.account_id')`, letting an
+   * authenticated Account discover which Organisation(s) it belongs to
+   * without needing any tenant context set (see the
+   * add_member_role_and_account_policy migration). Use this only for that
+   * discovery step; once a request has picked/confirmed its organisationId,
+   * go back to withTenant() for everything else.
+   */
+  async withAccount<T>(
+    accountId: string,
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.account_id', ${accountId}, true)`;
+      return fn(tx);
+    });
+  }
+
+  /**
    * Tenant onboarding (§8.1): creates a brand-new Organisation. The id is
    * generated here, client-side, specifically so it can be passed to
    * withTenant() *before* the row exists — the organisations RLS policy

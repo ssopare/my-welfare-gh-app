@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 // Phase 0 exit criterion (docs/requirements §24.3): "An empty tenant can be

@@ -52,12 +52,26 @@ enum MemberStatus {
   EXITED
 }
 
+// Placeholder until the real RBAC model (Role/RoleAssignment, §13) exists —
+// just enough to mark the founding admin from tenant self-registration
+// (FR-ONB-01). Not a Role/permission system; don't build on this expecting
+// it to grow into one, replace it outright when §13 is implemented.
+enum MemberRole {
+  ADMIN
+  MEMBER
+}
+
 // Belongs to one Account and one Organisation (Section 10). Tenant-scoped:
-// protected by RLS on organisationId.
+// protected by RLS on organisationId, *and* independently readable by the
+// owning Account via a separate account-scoped policy (see the
+// add_member_role_and_account_policy migration) — logging in needs to look
+// up "which orgs is this account a member of" before any tenant context
+// exists, the same bootstrapping problem Organisation creation had.
 model Member {
   id             String       @id @default(uuid())
   accountId      String
   organisationId String
+  role           MemberRole   @default(MEMBER)
   joinDate       DateTime     @default(now())
   status         MemberStatus @default(ACTIVE)
   createdAt      DateTime     @default(now())
@@ -66,5 +80,6 @@ model Member {
   organisation Organisation @relation(fields: [organisationId], references: [id])
 
   @@index([organisationId])
+  @@index([accountId])
   @@map("members")
 }

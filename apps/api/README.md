@@ -46,6 +46,16 @@ npx prisma migrate dev
 npm run test:e2e       # tenant-isolation.e2e-spec.ts proves RLS against a real Postgres, not mocks
 ```
 
+### Auth (Phase 1)
+
+Phone + password, JWT-based (`JWT_SECRET` — generate your own for `.env`, e.g. `openssl rand -base64 32`; never reuse the dev one committed nowhere but present in your local `.env`). No OTP/SMS — that was a deliberate scope call to avoid an external provider dependency before the rule engine/ledger exist; see the auth-mechanism decision in project memory if revisiting this.
+
+- `POST /auth/register-organisation` — tenant self-registration (FR-ONB-01): creates the founding `Account` + `Organisation` + an `ADMIN` `Member`, all in one step, and returns a token.
+- `POST /auth/login` — `{ phoneNumber, password }`; add `organisationId` if the account has more than one Membership (no join-existing-org endpoint or multi-group switcher UI yet — §24.1 defers the polished version to Phase 2, this only has the data model for it).
+- `GET /auth/me` (guarded) — returns the decoded token payload (`sub`/accountId, `memberId`, `organisationId`, `role`).
+
+Login needs to discover which Organisation(s) an Account belongs to *before* any tenant context exists — the same bootstrapping problem `provisionOrganisation` solves for tenant creation. Solved the same way: `PrismaService.withAccount(accountId, fn)` sets `app.account_id`, which a second, independent RLS policy on `members` (`own_memberships`) reads — see the `add_member_role_and_account_policy` migration.
+
 ## Project setup
 
 ```bash

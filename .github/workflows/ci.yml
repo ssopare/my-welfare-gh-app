@@ -33,6 +33,8 @@ jobs:
       # instead — see that file. Password here is a CI-only throwaway.
       DATABASE_URL: postgresql://welfare:welfare@localhost:5432/welfare_platform?schema=public
       APP_DATABASE_URL: postgresql://app_runtime:app_runtime_ci_password@localhost:5432/welfare_platform?schema=public
+      # CI-only throwaway secret, not a real credential.
+      JWT_SECRET: ci-only-jwt-secret-not-a-real-credential
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
