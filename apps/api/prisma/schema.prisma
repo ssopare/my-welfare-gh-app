@@ -48,14 +48,16 @@ model Organisation {
   // doesn't need a migration later, just an implementation.
   paymentAllocationPolicy String @default("oldest_first")
 
-  members           Member[]
-  chapters          Chapter[]
-  contributionPlans ContributionPlan[]
-  benefitRules      BenefitRule[]
-  funds             Fund[]
-  ledgerAccounts    LedgerAccount[]
-  journalEntries    JournalEntry[]
-  obligations       Obligation[]
+  members                  Member[]
+  chapters                 Chapter[]
+  contributionPlans        ContributionPlan[]
+  benefitRules             BenefitRule[]
+  funds                    Fund[]
+  ledgerAccounts           LedgerAccount[]
+  journalEntries           JournalEntry[]
+  obligations              Obligation[]
+  paymentIntents           PaymentIntent[]
+  reconciliationExceptions ReconciliationException[]
 
   @@map("organisations")
 }
@@ -125,12 +127,13 @@ model Member {
   status         MemberStatus @default(PENDING)
   createdAt      DateTime     @default(now())
 
-  account       Account              @relation(fields: [accountId], references: [id])
-  organisation  Organisation         @relation(fields: [organisationId], references: [id])
-  chapter       Chapter?             @relation(fields: [chapterId], references: [id])
-  dependants    Dependant[]
-  statusChanges MemberStatusChange[]
-  obligations   Obligation[]
+  account        Account              @relation(fields: [accountId], references: [id])
+  organisation   Organisation         @relation(fields: [organisationId], references: [id])
+  chapter        Chapter?             @relation(fields: [chapterId], references: [id])
+  dependants     Dependant[]
+  statusChanges  MemberStatusChange[]
+  obligations    Obligation[]
+  paymentIntents PaymentIntent[]
 
   @@index([organisationId])
   @@index([accountId])
@@ -279,6 +282,7 @@ model Fund {
   organisation   Organisation    @relation(fields: [organisationId], references: [id])
   ledgerAccounts LedgerAccount[]
   journalEntries JournalEntry[]
+  paymentIntents PaymentIntent[]
 
   @@index([organisationId])
   @@map("funds")
@@ -349,11 +353,12 @@ model JournalEntry {
   postedAt       DateTime @default(now())
   createdBy      String // Member.id
 
-  organisation Organisation   @relation(fields: [organisationId], references: [id])
-  fund         Fund           @relation(fields: [fundId], references: [id])
-  reversalOf   JournalEntry?  @relation("JournalEntryReversals", fields: [reversalOfId], references: [id])
-  reversals    JournalEntry[] @relation("JournalEntryReversals")
-  lines        JournalLine[]
+  organisation  Organisation   @relation(fields: [organisationId], references: [id])
+  fund          Fund           @relation(fields: [fundId], references: [id])
+  reversalOf    JournalEntry?  @relation("JournalEntryReversals", fields: [reversalOfId], references: [id])
+  reversals     JournalEntry[] @relation("JournalEntryReversals")
+  lines         JournalLine[]
+  paymentIntent PaymentIntent?
 
   @@index([organisationId])
   @@index([fundId])
@@ -430,6 +435,71 @@ model Obligation {
   @@index([memberId])
   @@index([contributionPlanId])
   @@map("obligations")
+}
+
+enum PaymentChannel {
+  MOBILE_MONEY
+  CARD
+  BANK_TRANSFER
+}
+
+enum PaymentIntentStatus {
+  INITIATED
+  SUCCEEDED
+  FAILED
+}
+
+// §15, FR-PAY-01/04. A real payment is asynchronous: initiating one only
+// gets a providerReference, not a result — the provider confirms
+// success/failure later via webhook, which is what actually posts the
+// ledger entry (see PaymentService.handleWebhook). This row is what makes
+// that webhook idempotent: "the second delivery is a no-op, never a
+// double-post" only works because there's a durable, providerReference-
+// keyed record of what's already been processed.
+model PaymentIntent {
+  id                String              @id @default(uuid())
+  organisationId    String
+  memberId          String
+  fundId            String
+  channel           PaymentChannel
+  amountValue       Decimal             @db.Decimal(12, 2)
+  currency          String
+  // Globally unique, not just per-tenant — this is the provider's own
+  // transaction id, and providers don't know about our tenant boundaries.
+  providerReference String              @unique
+  status            PaymentIntentStatus @default(INITIATED)
+  journalEntryId    String?             @unique
+  createdAt         DateTime            @default(now())
+  completedAt       DateTime?
+
+  organisation Organisation  @relation(fields: [organisationId], references: [id])
+  member       Member        @relation(fields: [memberId], references: [id])
+  fund         Fund          @relation(fields: [fundId], references: [id])
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id])
+
+  @@index([organisationId])
+  @@map("payment_intents")
+}
+
+// FR-PAY-04: "surface unreconciled transactions to the Treasurer" — the
+// system never auto-corrects a mismatch on its own (§12.3). Created when a
+// webhook arrives whose providerReference doesn't match any known
+// PaymentIntent for the organisation it claims, or reports a status that
+// conflicts with one already recorded (e.g. "succeeded" for an intent this
+// system already marked FAILED) — never silently overwritten.
+model ReconciliationException {
+  id                String    @id @default(uuid())
+  organisationId    String
+  providerReference String
+  reason            String
+  resolvedAt        DateTime?
+  resolvedBy        String?
+  createdAt         DateTime  @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+
+  @@index([organisationId])
+  @@map("reconciliation_exceptions")
 }
 
 // Audit trail for every MemberStatus transition (§8.12 — audit is
