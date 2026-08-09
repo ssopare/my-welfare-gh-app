@@ -1,0 +1,1352 @@
+<title>Welfare Platform — Product &amp; Financial Requirements Specification</title>
+<style>
+:root{
+  --paper:#F5F6F2;
+  --surface:#FFFFFF;
+  --surface-2:#EFF1EA;
+  --ink:#1A241E;
+  --ink-soft:#4C584F;
+  --ink-faint:#7C877D;
+  --line:#DCDFD3;
+  --line-strong:#C4C9B8;
+  --accent:#0E6B57;
+  --accent-soft:#DCEEE7;
+  --accent-contrast:#FFFFFF;
+  --gold:#9C7018;
+  --gold-soft:#F1E6CC;
+  --good:#2E7D46;
+  --good-soft:#E2F1E5;
+  --warn:#B4791A;
+  --warn-soft:#F6E8D2;
+  --critical:#A6362B;
+  --critical-soft:#F6E1DE;
+  --code-bg:#ECEFE5;
+  --shadow: 0 1px 2px rgba(20,30,20,0.06), 0 8px 24px rgba(20,30,20,0.05);
+  --font-display: "Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --font-body: Optima,Candara,"Noto Sans","Segoe UI",system-ui,-apple-system,sans-serif;
+  --font-mono: "SF Mono","Cascadia Code",Consolas,"Roboto Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#10140F;
+    --surface:#161C16;
+    --surface-2:#1B2219;
+    --ink:#E7ECE3;
+    --ink-soft:#AEB8A8;
+    --ink-faint:#7C8B7A;
+    --line:#2B3327;
+    --line-strong:#3A4536;
+    --accent:#3FCB9F;
+    --accent-soft:#173028;
+    --accent-contrast:#06140F;
+    --gold:#D8A63C;
+    --gold-soft:#2E2617;
+    --good:#4CAE72;
+    --good-soft:#173023;
+    --warn:#D9A13B;
+    --warn-soft:#302510;
+    --critical:#E36B5C;
+    --critical-soft:#301714;
+    --code-bg:#131912;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#10140F;
+  --surface:#161C16;
+  --surface-2:#1B2219;
+  --ink:#E7ECE3;
+  --ink-soft:#AEB8A8;
+  --ink-faint:#7C8B7A;
+  --line:#2B3327;
+  --line-strong:#3A4536;
+  --accent:#3FCB9F;
+  --accent-soft:#173028;
+  --accent-contrast:#06140F;
+  --gold:#D8A63C;
+  --gold-soft:#2E2617;
+  --good:#4CAE72;
+  --good-soft:#173023;
+  --warn:#D9A13B;
+  --warn-soft:#302510;
+  --critical:#E36B5C;
+  --critical-soft:#301714;
+  --code-bg:#131912;
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--font-body);
+  font-size:16px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{ background:var(--accent-soft); }
+
+a{ color:var(--accent); text-decoration:none; border-bottom:1px solid var(--accent-soft); }
+a:hover{ border-bottom-color:var(--accent); }
+a:focus-visible, button:focus-visible, [tabindex]:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:2px;
+}
+
+h1,h2,h3,h4{ font-family:var(--font-display); font-weight:600; text-wrap:balance; color:var(--ink); }
+p{ text-wrap:pretty; }
+
+.shell{
+  max-width:1280px;
+  margin:0 auto;
+  display:grid;
+  grid-template-columns:270px minmax(0,1fr);
+  gap:48px;
+  padding:0 32px 96px;
+}
+@media (max-width:900px){
+  .shell{ grid-template-columns:1fr; }
+  .toc{ position:static; max-height:none; }
+}
+
+/* ---------- Cover ---------- */
+.cover{
+  grid-column:1 / -1;
+  padding:64px 0 40px;
+  border-bottom:1px solid var(--line);
+  margin-bottom:8px;
+}
+.cover-eyebrow{
+  font-family:var(--font-mono);
+  font-size:12.5px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--accent);
+  display:flex; align-items:center; gap:10px;
+  margin-bottom:22px;
+}
+.cover-eyebrow .dot{ width:6px;height:6px;border-radius:50%;background:var(--accent); }
+.cover h1{
+  font-size:clamp(32px,4.2vw,52px);
+  line-height:1.08;
+  margin:0 0 14px;
+  max-width:16ch;
+}
+.cover .subtitle{
+  font-size:19px;
+  color:var(--ink-soft);
+  max-width:52ch;
+  margin:0 0 28px;
+}
+.doc-control{
+  display:flex; flex-wrap:wrap; gap:28px 40px;
+  font-family:var(--font-mono);
+  font-size:12.5px;
+  color:var(--ink-faint);
+  padding-top:22px;
+  border-top:1px dashed var(--line-strong);
+}
+.doc-control div span{ display:block; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.08em; font-size:10.5px; margin-bottom:4px; }
+.doc-control div strong{ color:var(--ink); font-weight:600; }
+.tag{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+  padding:3px 9px; border-radius:20px;
+  background:var(--gold-soft); color:var(--gold); border:1px solid color-mix(in srgb, var(--gold) 35%, transparent);
+}
+
+/* ---------- TOC ---------- */
+.toc{
+  position:sticky; top:32px; align-self:start;
+  max-height:calc(100vh - 64px); overflow-y:auto;
+  padding-right:8px;
+}
+.toc-title{ font-family:var(--font-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:14px; }
+.toc ol{ list-style:none; margin:0; padding:0; counter-reset:toc; }
+.toc li{ counter-increment:toc; margin-bottom:2px; }
+.toc a{
+  display:flex; gap:10px; align-items:baseline;
+  border-bottom:none; padding:6px 8px; border-radius:6px;
+  color:var(--ink-soft); font-size:13.5px;
+}
+.toc a::before{
+  content: counter(toc) "."; font-family:var(--font-mono); color:var(--ink-faint); font-size:12px; min-width:18px;
+}
+.toc a:hover{ background:var(--surface-2); color:var(--ink); }
+.toc .sub{ margin-left:22px; font-size:12.5px; }
+.toc .sub a::before{ content:""; }
+
+/* ---------- Main content ---------- */
+main{ min-width:0; padding-top:48px; }
+section{ margin-bottom:64px; scroll-margin-top:24px; }
+.kicker{
+  font-family:var(--font-mono); font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--accent); margin-bottom:10px; display:flex; align-items:center; gap:10px;
+}
+.kicker .num{
+  font-family:var(--font-mono); background:var(--accent-soft); color:var(--accent);
+  border-radius:6px; padding:2px 8px; font-size:12px;
+}
+section > h2{ font-size:28px; margin:0 0 6px; }
+section > .lede{ color:var(--ink-soft); font-size:16.5px; max-width:68ch; margin:0 0 28px; }
+h3{ font-size:19px; margin:36px 0 12px; }
+h3 .id{ font-family:var(--font-mono); font-size:12px; color:var(--ink-faint); margin-right:8px; }
+h4{ font-size:15.5px; margin:24px 0 8px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; font-family:var(--font-body); font-weight:700;}
+p, li{ max-width:72ch; }
+ul, ol{ padding-left:22px; }
+li{ margin-bottom:6px; }
+strong{ color:var(--ink); }
+.small{ font-size:13.5px; color:var(--ink-faint); }
+
+/* ---------- Tables ---------- */
+.table-wrap{ overflow-x:auto; margin:18px 0 28px; border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow); }
+table{ border-collapse:collapse; width:100%; min-width:560px; background:var(--surface); font-size:14px; }
+th,td{ padding:10px 14px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+th{
+  font-family:var(--font-mono); font-size:11.5px; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--ink-soft); background:var(--surface-2); position:sticky; top:0;
+}
+tr:last-child td{ border-bottom:none; }
+td.num, th.num{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; text-align:right; }
+.amt{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--gold); font-weight:600; }
+td.src, th.src{ font-family:var(--font-mono); font-size:12.5px; color:var(--ink-faint); white-space:nowrap; }
+
+/* ---------- Callouts ---------- */
+.callout{ border-radius:10px; padding:18px 20px; margin:22px 0; border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); }
+.callout .ctitle{ font-family:var(--font-mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:8px;}
+.callout.insight{ border-color:color-mix(in srgb, var(--accent) 35%, var(--line)); background:var(--accent-soft); }
+.callout.insight .ctitle{ color:var(--accent); }
+.callout.risk{ border-color:color-mix(in srgb, var(--critical) 35%, var(--line)); background:var(--critical-soft); }
+.callout.risk .ctitle{ color:var(--critical); }
+.callout.decision{ border-color:color-mix(in srgb, var(--gold) 35%, var(--line)); background:var(--gold-soft); }
+.callout.decision .ctitle{ color:var(--gold); }
+.callout p:last-child{ margin-bottom:0; }
+
+/* ---------- Pills / status ---------- */
+.pill{ display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:11.5px; padding:2px 9px; border-radius:20px; font-weight:600; }
+.pill.good{ background:var(--good-soft); color:var(--good); }
+.pill.warn{ background:var(--warn-soft); color:var(--warn); }
+.pill.critical{ background:var(--critical-soft); color:var(--critical); }
+.pill.muted{ background:var(--surface-2); color:var(--ink-soft); }
+
+/* ---------- FR list ---------- */
+.fr{ border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin:14px 0; background:var(--surface); box-shadow:var(--shadow); }
+.fr .frhead{ display:flex; justify-content:space-between; gap:12px; align-items:baseline; margin-bottom:6px; flex-wrap:wrap;}
+.fr .frid{ font-family:var(--font-mono); font-size:12px; color:var(--accent); font-weight:700; }
+.fr p{ margin:4px 0 0; color:var(--ink-soft); font-size:14.5px; }
+
+/* ---------- code ---------- */
+pre{
+  background:var(--code-bg); border:1px solid var(--line); border-radius:10px;
+  padding:16px 18px; overflow-x:auto; font-family:var(--font-mono); font-size:12.8px; line-height:1.55;
+  color:var(--ink);
+}
+code{ font-family:var(--font-mono); background:var(--code-bg); padding:1px 5px; border-radius:4px; font-size:0.92em; }
+pre code{ background:none; padding:0; }
+
+/* ---------- diagram ---------- */
+.tiers{ display:grid; gap:10px; margin:20px 0 28px; }
+.tier{
+  display:grid; grid-template-columns:160px 1fr; gap:16px; align-items:center;
+  border:1px solid var(--line); border-radius:10px; padding:12px 16px; background:var(--surface); box-shadow:var(--shadow);
+}
+.tier .label{ font-family:var(--font-mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); }
+.tier .desc{ font-size:13.5px; color:var(--ink-soft); }
+.tier.indent1{ margin-left:28px; }
+.tier.indent2{ margin-left:56px; }
+.tier.indent3{ margin-left:84px; }
+
+hr.rule{ border:none; border-top:1px dashed var(--line-strong); margin:40px 0; }
+
+footer{
+  grid-column:1/-1; border-top:1px solid var(--line); padding-top:24px; margin-top:24px;
+  color:var(--ink-faint); font-size:12.5px; font-family:var(--font-mono);
+  display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;
+}
+@media print{ .toc{display:none;} .shell{grid-template-columns:1fr;} }
+</style>
+
+<div class="shell">
+
+  <div class="cover">
+    <div class="cover-eyebrow"><span class="dot"></span>Product &amp; Financial Requirements Specification</div>
+    <h1>A configuration engine for mutual welfare, not a welfare app</h1>
+    <p class="subtitle">Requirements for a multi-tenant mobile platform on which any staff association, alumni union, or civil-service welfare group can stand up its own constitution — contributions, benefits, governance, and enforcement — without a single line of code changing underneath it.</p>
+    <div class="doc-control">
+      <div><span>Document</span><strong>WELF-PRD-001</strong></div>
+      <div><span>Version</span><strong>2.1 — Decisions locked</strong></div>
+      <div><span>Prepared</span><strong>8 August 2026</strong></div>
+      <div><span>Status</span><span class="tag">multi-source merge + stakeholder decisions</span></div>
+      <div><span>Inputs analysed</span><strong>4 constitutions · 6 independent AI analyses</strong></div>
+    </div>
+  </div>
+
+  <nav class="toc" aria-label="Table of contents">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#intro">Introduction</a></li>
+      <li><a href="#methodology">Consolidation methodology</a></li>
+      <li><a href="#philosophy">Design philosophy</a></li>
+      <li><a href="#comparative">Comparative constitution analysis</a></li>
+      <li><a href="#convergence">Convergence map</a></li>
+      <li><a href="#stakeholders">Stakeholders &amp; roles</a></li>
+      <li><a href="#tenancy">System overview &amp; tenancy model</a></li>
+      <li><a href="#functional">Functional requirements</a>
+        <ol style="margin-left:22px;font-size:12.5px;">
+          <li class="sub"><a href="#fr-onboarding">8.1 Onboarding</a></li>
+          <li class="sub"><a href="#fr-membership">8.2 Membership</a></li>
+          <li class="sub"><a href="#fr-governance">8.3 Governance</a></li>
+          <li class="sub"><a href="#fr-rules">8.4 Rule engine</a></li>
+          <li class="sub"><a href="#fr-ledger">8.5 Contributions &amp; ledger</a></li>
+          <li class="sub"><a href="#fr-claims">8.6 Claims &amp; disbursement</a></li>
+          <li class="sub"><a href="#fr-defaulter">8.7 Defaulter &amp; anti-abuse</a></li>
+          <li class="sub"><a href="#fr-payments">8.8 Payments</a></li>
+          <li class="sub"><a href="#fr-reporting">8.9 Reporting</a></li>
+          <li class="sub"><a href="#fr-rbac">8.10 RBAC</a></li>
+          <li class="sub"><a href="#fr-comms">8.11 Notifications</a></li>
+          <li class="sub"><a href="#fr-audit">8.12 Audit &amp; documents</a></li>
+          <li class="sub"><a href="#fr-elections">8.13 Elections</a></li>
+        </ol>
+      </li>
+      <li><a href="#nfr">Non-functional requirements</a></li>
+      <li><a href="#datamodel">Domain data model</a></li>
+      <li><a href="#ruleengine">Rule engine specification</a></li>
+      <li><a href="#ledger">Ledger &amp; accounting architecture</a></li>
+      <li><a href="#rbacspec">RBAC specification</a></li>
+      <li><a href="#antiabuse">Anti-abuse logic in detail</a></li>
+      <li><a href="#paymentsarch">Payments architecture</a></li>
+      <li><a href="#reportscat">Reporting catalogue</a></li>
+      <li><a href="#ai">AI capabilities</a></li>
+      <li><a href="#subscription">Subscription &amp; billing</a></li>
+      <li><a href="#edgecases">Edge cases</a></li>
+      <li><a href="#stack">Technology stack</a></li>
+      <li><a href="#multitenancy">Multi-tenancy decision</a></li>
+      <li><a href="#security">Security &amp; compliance</a></li>
+      <li><a href="#risks">Assumptions, risks &amp; open questions</a></li>
+      <li><a href="#roadmap">Implementation roadmap &amp; MVP scope</a></li>
+      <li><a href="#appendix">Appendices</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <!-- 1 -->
+    <section id="intro">
+      <div class="kicker"><span class="num">01</span>Introduction</div>
+      <h2>Purpose &amp; scope</h2>
+      <p class="lede">This document translates a plain-language product brief and four real welfare constitutions into an implementation-ready requirements specification for a multi-tenant welfare management mobile platform.</p>
+
+      <p>The brief asks for a single mobile application that thousands of independent welfare groups — university staff associations, ministry welfare schemes, private-school associations, alumni unions — can each download, register on, and run autonomously, with financial behaviour driven entirely by <em>configuration</em> rather than by per-client code. To ground that ambition in something other than abstraction, four constitutions were supplied as source material and are treated throughout this document as representative case law:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Source</th><th>Organisation type</th><th>Governance shape</th><th>Contribution model</th><th>Notable mechanism</th></tr></thead>
+          <tbody>
+            <tr><td><strong>UDS Staff Welfare Association</strong></td><td>Public university, multi-campus employer scheme</td><td>5-tier: Assembly → Trustees → Management → 2 Committees → Campus sub-committees</td><td>Flat monthly payroll deduction (GHS 15)</td><td>Federated <strong>campus conveners</strong> aggregating claims upward</td></tr>
+            <tr><td><strong>St. Peter's Staff Welfare Association</strong></td><td>Private school, single site</td><td>5-officer Executive Council + Patron (ex-officio)</td><td>Flat monthly payroll deduction (GHS 5)</td><td>Named-beneficiary pre-registration on a personal particulars form</td></tr>
+            <tr><td><strong>Ministry of Works &amp; Housing Welfare Association</strong></td><td>Civil-service ministry, statutory body</td><td>9-member Council + 3 standing committees (Investment, Relief, Finance &amp; Admin)</td><td>Flat monthly payroll deduction (GHS 20)</td><td>Explicit <strong>75% exit refund</strong> for unbenefited leavers; formal annual audit cycle</td></tr>
+            <tr><td><strong>AGAOSAS (alumni association)</strong></td><td>Voluntary alumni union, no employer/payroll relationship</td><td>7-officer Executive Committee, elected, term-limited</td><td>Self-remitted annual + event-triggered dues, <em>amended mid-life</em> from flat to tiered</td><td>Explicit <strong>defaulter lock-out</strong>, probation period, and one-time re-entry rule</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>These four differ in almost every financial particular — contribution amount, cadence, collection mechanism, benefit catalogue, payout amount, eligibility waiting period, and even in how consistently they were amended — while sharing an identical <em>shape</em>: a pool, a set of trigger events, a set of payouts, an approval chain, and a way to lose eligibility. That shape is the product's real subject matter. Section 3 makes the comparison explicit; Sections 9–11 show how it becomes configuration rather than code.</p>
+
+      <h3><span class="id">1.1</span>What this document is, and isn't</h3>
+      <p>This is a <strong>Business &amp; Product Requirements Specification (BRD/PRD hybrid)</strong>: it defines <em>what</em> the system must do, the rules it must be able to express, and the architecture qualities it must have. It stops short of API contracts, screen-by-screen UI specs, and sprint planning — those belong to the technical design and delivery documents this specification feeds.</p>
+    </section>
+
+    <!-- 2 -->
+    <section id="methodology">
+      <div class="kicker"><span class="num">02</span>Consolidation methodology</div>
+      <h2>How six independent analyses became one document</h2>
+      <p class="lede">This is v2.0. The brief and the four source constitutions were given to six AI systems independently, without cross-visibility. All six produced genuine, substantive analyses. This section is the record of how they were merged.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Source</th><th>What the file contained</th><th>Treatment</th></tr></thead>
+          <tbody>
+            <tr><td><strong>This document (Claude / Sonnet 5)</strong></td><td>Full independent BRD/PRD, all 4 constitutions analysed</td><td>Primary structural basis for v2.0</td></tr>
+            <tr><td><strong>"Claude — web version"</strong></td><td>Full independent BRD/PRD (3 of the 4 constitutions — AGAOSAS omitted)</td><td>Merged</td></tr>
+            <tr><td><strong>DeepSeek</strong></td><td>Full independent PRD, all 4 constitutions</td><td>Merged</td></tr>
+            <tr><td><strong>Grok</strong></td><td>Full independent BRD, all 4 constitutions</td><td>Merged, heavily</td></tr>
+            <tr><td><strong>Gemini</strong></td><td>Full independent SRS/architecture document, all 4 constitutions, with a concrete JSON rule schema and permission matrix</td><td>Merged</td></tr>
+            <tr><td><strong>GPT ("Master Prompt")</strong></td><td>GPT's own 95-part analysis, written in the form of an extended master prompt it would issue to an execution agent — includes an explicit ambiguity register, a full financial-primitive taxonomy, and a named "Programmable Welfare Finance Engine" pipeline</td><td>Merged, heavily — despite the unusual prompt-shaped format, the content is a real independent analysis</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Where all or most of the six agreed, that agreement is treated as high-confidence and adopted without further debate (Section 05). Where they disagreed, the divergence is named explicitly and a reasoned default is chosen — flagged for your confirmation rather than silently picked. Where only one or two sources raised a genuinely new capability that strengthens the product without contradicting the others, it was folded in as a new section or subsection rather than discarded for lack of a majority vote.</p>
+
+      <div class="callout insight">
+        <div class="ctitle">What changed between v1.0 (four-way) and this six-way merge</div>
+        <p>Two decisions that were "adopted anyway despite only one source insisting" in the earlier draft turned out, once Gemini and GPT's actual analyses were available, to have much broader support than first thought: full double-entry accounting (now explicit in three of six analyses, not one) and strict separation of platform-subscription revenue from tenant welfare funds (now explicit in two of six, with GPT stating the identical principle independently). Both are noted in the updated Section 05.</p>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section id="philosophy">
+      <div class="kicker"><span class="num">03</span>Design philosophy</div>
+      <h2>Constitution-as-configuration</h2>
+      <p class="lede">The single hardest requirement in the brief is also the one every naive welfare app gets wrong: financial logic must be data, not deployment.</p>
+
+      <h3><span class="id">3.1</span>What every constitution has, structurally</h3>
+      <ul>
+        <li><strong>A membership lifecycle</strong> — join (with or without probation/grace period), remain in good standing, default, exit (voluntary, involuntary, or by death), and sometimes re-enter.</li>
+        <li><strong>A funding side</strong> — one or more contribution obligations, each with an amount, a cadence, a collection mechanism, and a review procedure.</li>
+        <li><strong>A benefit catalogue</strong> — trigger events (birth, marriage, bereavement of a defined relative, illness, resignation, retirement) each mapped to a payout, a frequency cap, and a verification requirement.</li>
+        <li><strong>An eligibility gate</strong> — minimum tenure, good standing, and (in every source document) some rule that <em>removes</em> eligibility on default or on early exit.</li>
+        <li><strong>An approval chain</strong> — someone verifies, someone recommends, someone approves, someone disburses, and someone reports back to the membership.</li>
+        <li><strong>A governance body</strong> that can itself change all of the above, subject to a quorum and a majority threshold.</li>
+      </ul>
+
+      <h3><span class="id">3.2</span>What varies — and why hardcoding it fails</h3>
+      <p>Every numeric value, cadence, relationship definition, and threshold above varies by organisation, and several vary <em>within</em> a single organisation's own lifetime — the AGAOSAS constitution is, in the source document, visibly mid-amendment: its Article 8 and Article 10 each carry two contradictory generations of benefit figures (a flat GHC 1,000/500 regime being superseded by a GHC 3,000/2,500 regime) sitting in the same file. A platform that encodes "bereavement payout" as a constant, or as a value tied to a specific benefit-type enum, cannot survive its first client's first amendment, let alone its second client's entirely different benefit catalogue (the Ministry of Works pays a benefit for the <em>employee's own</em> death; UDS instead treats an employee's death as a payment <em>to survivors</em> — these are not the same rule with a different number, they are structurally different claims).</p>
+
+      <div class="callout insight">
+        <div class="ctitle">Design principle</div>
+        <p>Nothing that appears as a number, a name, a time period, or a relationship in a constitution may be a constant in code. It must be a row in a rules table, versioned, effective-dated, and editable by an authorised role inside the product — the same product members use to pay dues and file claims.</p>
+      </div>
+
+      <h3><span class="id">3.3</span>Consequence for architecture</h3>
+      <p>This pushes the platform toward a <strong>rule-engine-first architecture</strong> (Section 11): a small, stable core (tenant, member, ledger, transaction, claim, approval) surrounded by a configuration layer that every tenant's onboarding wizard populates and every tenant's admins can subsequently amend, with full version history — because "the constitution changed" must be an audit event, not a support ticket.</p>
+    </section>
+
+    <!-- 4 -->
+    <section id="comparative">
+      <div class="kicker"><span class="num">04</span>Comparative analysis</div>
+      <h2>The four constitutions, side by side</h2>
+      <p class="lede">Extracted verbatim from the source documents, normalised into the dimensions the system must configure per tenant.</p>
+
+      <h3><span class="id">4.1</span>Governance &amp; meetings</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Dimension</th><th>UDS</th><th>St. Peter's</th><th>Min. of Works</th><th>AGAOSAS</th></tr></thead>
+          <tbody>
+            <tr><td>Governing tiers</td><td>5 (Assembly, Trustees, Mgmt, 2 committees, campus sub-committees)</td><td>2 (Assembly, Exec Council)</td><td>3 (Assembly, Exec Council, 3 standing committees)</td><td>2 (Assembly, Exec Committee)</td></tr>
+            <tr><td>Officer term</td><td>3 years, renewable</td><td>1 year, max 2 consecutive</td><td>2 years, max 2 consecutive</td><td>2 years, max 2 consecutive (with a carve-out allowing further terms on 2/3 endorsement)</td></tr>
+            <tr><td>Ordinary quorum</td><td>Varies by body (3–5)</td><td>Not specified beyond EC majority</td><td>1/3 of total membership</td><td>1/3 of members (5 for EC meetings)</td></tr>
+            <tr><td>Emergency quorum</td><td>3, incl. Chair/Vice</td><td>n/s</td><td>1/3 of total membership</td><td>defined by "emergency" test + notice rules</td></tr>
+            <tr><td>Tie-break</td><td>Chair casting vote (per committee)</td><td>n/s</td><td>n/s (simple majority)</td><td>Chair casting vote</td></tr>
+            <tr><td>Ex-officio patron</td><td>Board seats for Registrar, Finance Officer, Legal (by office)</td><td>School Director, is a signatory</td><td>Chief Director, is a signatory</td><td>None — self-governed</td></tr>
+            <tr><td>No-confidence mechanism</td><td>Not specified</td><td>Yes — vote of no confidence, vice assumes role</td><td>Yes — identical mechanism</td><td>Not specified explicitly</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3><span class="id">4.2</span>Funding</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Dimension</th><th>UDS</th><th>St. Peter's</th><th>Min. of Works</th><th>AGAOSAS</th></tr></thead>
+          <tbody>
+            <tr><td>Primary contribution</td><td class="amt">GHS 15/mo</td><td class="amt">GHS 5/mo</td><td class="amt">GHS 20/mo</td><td class="amt">GHS 100/yr (superseding an earlier GHS 10/mo)</td></tr>
+            <tr><td>Collection mechanism</td><td>Payroll deduction at source</td><td>Payroll deduction at source</td><td>Payroll deduction at source</td><td>Self-remitted to treasurer / account</td></tr>
+            <tr><td>Secondary contributions</td><td>Donations, grants, investment interest</td><td>None specified</td><td>Appeals for funds, other sources</td><td>Registration fee (GHS 20, one-time), event-triggered donations (GHS 20–100), wedding-support levy (GHS 50)</td></tr>
+            <tr><td>Bank governance</td><td>Account "totally divorced" from parent institution</td><td>Named bank; 3 joint signatories incl. Patron</td><td>EC-determined bank; 3 joint signatories incl. Patron</td><td>Treasurer-held; audited annually</td></tr>
+            <tr><td>Rate revision authority</td><td>Finance Cttee → Mgmt → Trustees → Assembly</td><td>n/s</td><td>Exec Council, by majority</td><td>Majority of General Members</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="small">St. Peter's own source text states its due as both <em>"Ten Ghana Cedis"</em> and <em>"(GHc 5.00)"</em> in the same clause — a genuine defect in the source document, not a transcription error introduced here. See Section 05, row 11, for how the independent analyses handled this differently and what the product should do about it.</p>
+
+      <h3><span class="id">4.3</span>Benefit catalogue (selected)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Trigger event</th><th>UDS</th><th>St. Peter's</th><th>Min. of Works</th><th>AGAOSAS (current)</th></tr></thead>
+          <tbody>
+            <tr><td>Death of spouse</td><td class="amt">GHS 500 (+bus, once)</td><td class="amt">GHS 1,000</td><td class="amt">GHS 500</td><td class="amt">GHS 3,000</td></tr>
+            <tr><td>Death of child</td><td class="amt">GHS 500 (cap 3)</td><td class="amt">GHS 500</td><td class="amt">GHS 500</td><td class="amt">GHS 3,000 (cap 1 in older clause)</td></tr>
+            <tr><td>Death of parent</td><td class="amt">GHS 700/parent (once each)</td><td class="amt">GHS 500</td><td class="amt">GHS 500</td><td class="amt">GHS 3,000</td></tr>
+            <tr><td>Death of the member</td><td class="amt">GHS 1,000 to survivors + GHS 100 &amp; drinks to family</td><td class="amt">GHS 500 to family</td><td class="amt">GHS 1,000 (paid <em>as employee benefit</em>, verified by death certificate)</td><td class="amt">GHS 2,500 to next of kin</td></tr>
+            <tr><td>Marriage</td><td class="amt">GHS 500, once</td><td class="amt">GHS 200 cash + GHS 100 gift, transport capped GHS 200</td><td class="amt">GHS 250 cash + ≥GHS 250 gift</td><td class="amt">GHS 500, once</td></tr>
+            <tr><td>Birth</td><td class="amt">GHS 300 (cap 3 births)</td><td>—</td><td>—</td><td>—</td></tr>
+            <tr><td>Outdooring</td><td>—</td><td class="amt">GHS 200 (cap 3, recognised spouse only)</td><td class="amt">GHS 300 (cap 2)</td><td>—</td></tr>
+            <tr><td>Hospitalisation</td><td class="amt">GHS 200/yr, &gt;1 week admission</td><td class="amt">GHS 200, severe cases (EC discretion)</td><td class="amt">GHS 500–1,000, severity-graded; GHS 1,000 for incapacitating accidents</td><td class="amt">GHS 500, &gt;3 days or accident, verification required</td></tr>
+            <tr><td>Exit / resignation</td><td>1/3 of contributions if never benefitted; nil if previously benefitted</td><td>Parting gift = GHS 50 × years served (min GHS 200 at 3yrs); void if dismissed/absconded</td><td><strong>75%</strong> refund if never benefitted, plus parting gift; void if dismissed/absconded</td><td>Loses <em>all</em> entitlement on voluntary exit; one-time re-entry with arrears + fresh probation</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3><span class="id">4.4</span>Eligibility &amp; defaulter mechanics</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Dimension</th><th>UDS</th><th>St. Peter's</th><th>Min. of Works</th><th>AGAOSAS</th></tr></thead>
+          <tbody>
+            <tr><td>Waiting period for new members</td><td>6 months</td><td>Automatic on hire</td><td>Automatic on posting</td><td>3-month probation, limited/no benefit during it</td></tr>
+            <tr><td>Good-standing test</td><td>Implicit (must contribute)</td><td>Implicit</td><td>Implicit</td><td><strong>Explicit</strong>: default &gt;2 consecutive months ⇒ suspended until arrears cleared</td></tr>
+            <tr><td>Consequence of default</td><td>Not specified in excerpt</td><td>Not specified in excerpt</td><td>Not specified in excerpt</td><td>3 missed monthly dues ⇒ lose <em>all</em> entitlement; 2 missed event donations ⇒ lose entitlement</td></tr>
+            <tr><td>Re-entry after exit</td><td>Not specified</td><td>Not specified</td><td>Not specified</td><td>One chance only: pay arrears + 3-month probation + apology if departure was acrimonious</td></tr>
+            <tr><td>Verification requirement</td><td>Convener verifies &amp; recommends claims from campus</td><td>Named beneficiaries pre-registered on file</td><td><strong>Death certificate</strong> mandatory before payment</td><td>Explicit note: "incidents will need to be verified before donations are done to avoid future misunderstanding"</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout insight">
+        <div class="ctitle">What this comparison forces into the data model</div>
+        <p>Four independent, non-communicating organisations converged on the same primitives — waiting period, good-standing test, default consequence, verification gate — while disagreeing on every threshold and every amount, and one of them (AGAOSAS) shows that even a single organisation's own thresholds move over time. That is direct evidence for a <strong>rule engine with effective-dated, tenant-scoped parameters</strong> rather than a benefit-type enum with a price column.</p>
+      </div>
+
+      <h3><span class="id">4.5</span>Ambiguity &amp; conflict register</h3>
+      <p>GPT's analysis was the only one of the six to insist on this as a named, structured deliverable: <em>never silently resolve a contradiction found in a source constitution — register it, and let a human decide.</em> Applied to the actual source set:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Source</th><th>Conflicting provisions</th><th>Possible reading</th><th>Recommended system treatment</th></tr></thead>
+          <tbody>
+            <tr><td>St. Peter's, monthly due</td><td>Text states <em>"Ten Ghana Cedis"</em> in words, then <em>"(GHc 5.00)"</em> in figures, in the same clause.</td><td>Either GHS 10 (as written) or GHS 5 (as parenthesised) was the intended figure; a transcription error at some point in the document's history is likely.</td><td>Onboarding wizard flags the contradiction and forces the admin to pick one explicitly, recorded as a <code>RuleVersion</code> with a note — never auto-resolved (FR-ONB-06).</td></tr>
+            <tr><td>AGAOSAS, bereavement (parent/spouse/child)</td><td>Article 8 shows an older flat regime (GH¢1,000 funeral / GH¢500 marriage) alongside a newer Section 8.2 regime (GH¢3,000 for parent/spouse/child death) in the same document.</td><td>The newer figures supersede the older ones following an amendment that wasn't fully reconciled throughout the text.</td><td>Modelled as two <code>RuleVersion</code>s with an explicit <code>supersedes</code> link and effective dates (§11.2) — both figures are preserved in history, only the current one is live.</td></tr>
+            <tr><td>AGAOSAS, death of a member</td><td>Same pattern: an older GH¢1,500 figure and a newer GH¢2,500 figure both appear for the "family/next-of-kin" payout.</td><td>Same as above — sequential amendment, not a live dual-track benefit.</td><td>Same treatment: versioned, not merged into an average or a range.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">This register is illustrative, not exhaustive — the onboarding wizard's ambiguity-detection step (FR-ONB-06) is what should generate the equivalent register automatically for every tenant's own uploaded constitution, not just these four.</p>
+    </section>
+
+    <!-- 5 -->
+    <section id="convergence">
+      <div class="kicker"><span class="num">05</span>Convergence map</div>
+      <h2>Where six independent analyses agreed — and where they didn't</h2>
+      <p class="lede">Agreement across independently-run analyses is signal. Disagreement is a decision that's still open. This table is the actual evidence base for every "adopt as-is" versus "flagged for confirmation" call in the rest of this document.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Decision area</th><th>What the six analyses actually did</th><th>Verdict</th></tr></thead>
+          <tbody>
+            <tr><td>Tenant data isolation</td><td>All 6 independently proposed shared PostgreSQL + <code>tenant_id</code> + row-level security, with a dedicated-schema/DB escape hatch for large tenants (Gemini names UDS and ministries specifically as candidates for the escape hatch).</td><td><span class="pill good">high confidence, 6/6</span> — adopted (§21)</td></tr>
+            <tr><td>Primary database</td><td>PostgreSQL, unanimous, 6/6.</td><td><span class="pill good">high confidence, 6/6</span></td></tr>
+            <tr><td>Mobile framework</td><td>Flutter proposed as primary by 5/6; React Native offered only as the alternative option, never as the lead pick, by any source.</td><td><span class="pill good">high confidence</span> — Flutter primary (§20)</td></tr>
+            <tr><td>Backend framework</td><td>Node.js/NestJS named by all 6; Go, Django/DRF and FastAPI offered as alternatives to evaluate rather than definitive picks by Gemini, GPT, and this analysis.</td><td><span class="pill good">resolved</span> — NestJS locked in (§20), chosen deliberately over this workspace's own Django precedent on type-sharing and I/O-workload grounds</td></tr>
+            <tr><td>API gateway as an explicit layer</td><td>Only Gemini names a dedicated API gateway (Kong/Envoy) with tenant-routing middleware as its own architectural tier; the other 5 fold gateway concerns into the backend framework's own middleware.</td><td><span class="pill warn">minority proposal, worth adopting</span> — a dedicated gateway cleanly separates tenant-context routing, JWT validation and rate-limiting from business logic (§20)</td></tr>
+            <tr><td>Rules-engine implementation</td><td>4/6 explicitly reject a general BRMS (Drools etc.) for a bespoke, versioned, declarative JSON schema; Grok raises Drools/OPA as an option; Gemini proposes JsonLogic/RETE.</td><td><span class="pill good">moderate-high</span> — bespoke DSL for financial rules; OPA/Casbin-style engines reserved for RBAC only (§13)</td></tr>
+            <tr><td>Financial ledger model</td><td>Grok, Gemini, and GPT all independently specify full double-entry (chart of accounts, balanced journal entries, immutability) — GPT in the most depth. This analysis and "Claude-web" originally specified only an immutable transaction log; DeepSeek specified a simple wallet/balance.</td><td><span class="pill good">moderate-high, 3/6 explicit + upgraded from 2/6</span> — full double-entry adopted (§12); this is stronger consensus than the four-way merge showed</td></tr>
+            <tr><td>Obligation vs. payment as distinct concepts</td><td>GPT is explicit that "obligation" (what was owed) and "payment" (what was received) must never be collapsed into one row; Gemini's contribution-obligation model implies the same split; the other sources model it more loosely.</td><td><span class="pill warn">moderate, adopted</span> — formalised as its own concept, not just a ledger side-effect (§12)</td></tr>
+            <tr><td>Anti-dumping mechanism</td><td>All 6 agree defaulting must gate benefits; mechanisms differ in sophistication — this analysis: consistency score + cooldown; Claude-web: first-claim-only refund forfeiture; DeepSeek: simple threshold; Grok: cooling-off + max claims/period; Gemini: 3-stage escalation (grace 1–7 days → arrears 1–2 months, claims locked → forfeiture beyond 2–3 months); GPT: immutable arrears history + configurable requalification period.</td><td><span class="pill warn">convergent on need, divergent on mechanism</span> — all mechanisms combined (§14)</td></tr>
+            <tr><td>AI-assisted constitution extraction</td><td>Claude-web and GPT both independently propose this with an identical guardrail — AI proposes a draft configuration, a human must review and approve every line before activation. GPT names the workflow explicitly: Upload → Extract → Identify Ambiguities → Review → Correct → Approve → Activate.</td><td><span class="pill good">moderate, 2/6, adopted</span> — with the same guardrail both sources independently insisted on (§17)</td></tr>
+            <tr><td>Dedicated workflow engine (Temporal/Camunda)</td><td>Only Grok raises this. GPT explicitly warns against over-engineering ("do not recommend microservices merely because the system may be large") and the other 4 assume an in-app approval-chain state machine is enough.</td><td><span class="pill warn">minority proposal, deferred</span> — a state machine covers the 2–4-stage approval chains actually documented in the source constitutions; deferred to Phase 3</td></tr>
+            <tr><td>Platform subscription/billing, kept separate from welfare funds</td><td>Grok and GPT both raise platform monetization and independently state the identical constraint — subscription revenue must never commingle with a tenant's welfare fund. Gemini, Claude-web and DeepSeek don't address platform billing at all.</td><td><span class="pill good">moderate, 2/6 explicit + identical constraint</span> — adopted as a required module, structurally separated (§18)</td></tr>
+            <tr><td>St. Peter's contradictory due amount ("Ten"/GHc 5.00)</td><td>This analysis, DeepSeek and Gemini all silently resolved it to GHS 5; Claude-web and GPT independently flagged it as an unresolved source defect and argued it should never be silently resolved.</td><td><span class="pill critical">3/6 silently resolved it, 2/6 flagged it</span> — the flagging approach is adopted: the onboarding wizard must surface numeric contradictions, never silently pick one (§08.1)</td></tr>
+            <tr><td>Ambiguity &amp; Conflict Register as a formal deliverable</td><td>Only GPT proposes this as a named, structured artifact (document / article / conflicting provisions / interpretation / system impact / recommended treatment) rather than an ad hoc footnote — and explicitly extends it beyond the GHS 5/10 case to AGAOSAS's dual GH¢1,000/GH¢3,000 and GH¢1,500/GH¢2,500 figures.</td><td><span class="pill warn">minority proposal, adopted</span> — formalised as Section 4.5 rather than left as scattered notes</td></tr>
+            <tr><td>Event-date vs. claim-date vs. rule-effective-date</td><td>GPT is the only source to insist these must be tracked as distinct fields, warning that "eligibility should not automatically depend on whichever date is convenient" — directly relevant when a constitution changes between an event occurring and a claim being paid.</td><td><span class="pill warn">minority proposal, adopted</span> — folded into the rule-engine's date-arithmetic requirements (§11)</td></tr>
+            <tr><td>Loans module</td><td>All 6 note most source constitutions prohibit welfare-fund loans, and all 6 independently recommend shipping a loans module anyway, off by default, opt-in per tenant.</td><td><span class="pill good">high confidence, 6/6</span> — adopted unchanged</td></tr>
+            <tr><td>Multi-chapter/campus federation</td><td>This analysis and Grok model it in schema depth (from the UDS precedent); Claude-web and GPT note it briefly; DeepSeek and Gemini don't address it.</td><td><span class="pill warn">moderate</span> — retained as modelled-but-UI-deferred (§07)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout insight">
+        <div class="ctitle">Reading this table</div>
+        <p>Rows marked <span class="pill good">high confidence</span> are treated as settled for the rest of this document — no further debate needed. Rows marked <span class="pill critical">divergent</span> or <span class="pill warn">minority proposal</span> are exactly where a real product decision is being made on your behalf right now; each is cross-referenced to the section that makes the call, so you can override it there if you disagree.</p>
+      </div>
+    </section>
+
+    <!-- 6 -->
+    <section id="stakeholders">
+      <div class="kicker"><span class="num">06</span>Stakeholders</div>
+      <h2>Who the system serves</h2>
+      <p class="lede">Roles are drawn directly from the source constitutions and generalised into role <em>templates</em> a tenant can adopt, rename, or extend (see Section 13).</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Role template</th><th>Source precedent</th><th>Core need from the platform</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Platform Owner</strong></td><td>—</td><td>Tenant provisioning, billing, platform-wide observability, abuse detection across tenants</td></tr>
+            <tr><td><strong>Organisation / Tenant Admin</strong></td><td>Chairman, Management Team</td><td>Configure constitution, appoint roles, view all tenant data</td></tr>
+            <tr><td><strong>Treasurer / Financial Secretary</strong></td><td>Every source document</td><td>Reconcile inflows, initiate disbursements, publish statements</td></tr>
+            <tr><td><strong>Secretary</strong></td><td>Every source document</td><td>Membership records, minutes, notices, correspondence</td></tr>
+            <tr><td><strong>Committee Chair</strong> (Finance / Welfare / Relief / Investment)</td><td>UDS Finance &amp; Welfare Cttees; MoWH standing committees</td><td>Approve claims within delegated authority, propose rule changes</td></tr>
+            <tr><td><strong>Convener / Chapter Rep</strong></td><td>UDS campus conveners</td><td>Manage a sub-group (chapter/campus) inside a larger tenant; escalate claims</td></tr>
+            <tr><td><strong>Patron / Ex-officio Signatory</strong></td><td>School Director, Chief Director</td><td>Read visibility + disbursement sign-off, without day-to-day admin load</td></tr>
+            <tr><td><strong>Auditor</strong></td><td>AGAOSAS Audit Committee, MoWH annual audit</td><td>Read-only, time-boxed access to ledgers, receipts, and claim trails</td></tr>
+            <tr><td><strong>Member</strong></td><td>Every source document</td><td>Pay dues, view standing, file a claim, see benefit history</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section id="tenancy">
+      <div class="kicker"><span class="num">07</span>System overview</div>
+      <h2>Tenancy model &amp; onboarding flow</h2>
+      <p class="lede">Four levels, matching the UDS precedent of a national association with independent campus chapters — the deepest structure in the source set, and the one every shallower structure fits inside as a degenerate case.</p>
+
+      <div class="tiers">
+        <div class="tier"><div class="label">Platform</div><div class="desc">One physical deployment. Owns global auth, billing, abuse monitoring, and the master rule-engine schema every tenant configuration validates against.</div></div>
+        <div class="tier indent1"><div class="label">Organisation</div><div class="desc">A tenant: "UDS Staff Welfare Association", "AGAOSAS". Owns its constitution config, its member roster, its funds, its brand (logo/colour on their instance of the app).</div></div>
+        <div class="tier indent2"><div class="label">Group / Chapter</div><div class="desc">Optional sub-unit — a campus, a branch office, a class-year cohort. Inherits the parent organisation's rules unless explicitly overridden (e.g. a campus-level imprest allocation); has its own convener role and its own claim-escalation path.</div></div>
+        <div class="tier indent3"><div class="label">Member</div><div class="desc">A person, with exactly one membership status per organisation, optionally holding one or more role assignments (RBAC, Section 13).</div></div>
+      </div>
+
+      <div class="callout insight">
+        <div class="ctitle">Identity vs. membership</div>
+        <p>A person routinely belongs to more than one of these organisations at once — the same individual might be in a university staff association <em>and</em> an alumni union <em>and</em> a hometown welfare group. The tenant-isolation model in Section 21 correctly keeps their financial standing, dues, and claims completely separate in each — that boundary must never be weakened. But the <em>login</em> is a different layer from the <em>membership</em>: one phone-number-based <strong>Account</strong> can hold several <strong>Memberships</strong>, one per organisation, the same way a single Google account can belong to several Workspaces. The app presents a lightweight switcher between memberships; whichever one is active is always visible on screen, so a member is never confused about which group's dues they're paying or which group's balance they're viewing. See Section 10 for how <code>Account</code> and <code>Member</code> are modelled as distinct entities.</p>
+      </div>
+
+      <h3><span class="id">7.1</span>Onboarding flow</h3>
+      <ol>
+        <li><strong>Register organisation</strong> — legal name, type (employer-linked / voluntary), country &amp; currency, admin identity verification.</li>
+        <li><strong>Constitution wizard</strong> — a guided, form-driven interview (not a document upload parser) that walks the founding admin through: governance tiers, contribution plan(s), benefit catalogue, eligibility rules, defaulter policy, and approval chains. Every screen maps 1:1 to a table in Section 8.</li>
+        <li><strong>Optional: attach source document</strong> — the actual constitution PDF/Word file may be uploaded for reference and audit purposes; it is never parsed as the source of truth, only linked to the resulting configuration for human cross-checking.</li>
+        <li><strong>Role assignment</strong> — invite officers by phone/email; assign role templates or custom roles.</li>
+        <li><strong>Member import / self-registration</strong> — bulk CSV import (for payroll-linked employers) or open self-registration with admin approval (for voluntary associations).</li>
+        <li><strong>Go-live review</strong> — a plain-language summary ("Your members will pay GHS 20/month by mobile money; a bereaved member's spouse's death pays out GHS 500 after verification…") for the admin to confirm before the configuration becomes live and billable.</li>
+      </ol>
+
+      <div class="callout decision">
+        <div class="ctitle">Decision made</div>
+        <p>Chapters (Tier 3) are modelled in the schema from day one, but the UI for managing them — and the imprest sub-fund and escalation-SLA machinery that goes with it — is feature-flagged behind the Federation module, bundled into the Enterprise subscription tier (Section 18.4). A single-site tenant never sees a chapter screen; a multi-campus tenant like UDS turns it on as part of the tier it lands in anyway on member count. This resolves what was previously an open question without adding a separate pricing axis or a data-model rewrite later.</p>
+      </div>
+
+      <h3><span class="id">7.2</span>End-to-end registration flow</h3>
+      <p>Section 7.1 covers an organisation onboarding itself; this walks through what happens for a person, first joining one group and then joining a second — a sequence that touches onboarding, membership, and the Account/Membership split above, but hadn't previously been written out as one continuous path.</p>
+      <p><strong>Joining the first group.</strong> A prospective member arrives via an admin's invite link/QR code (voluntary orgs) or is bulk-imported from a payroll list (employer-linked orgs). If they've never used the platform before, registering creates their <code>Account</code> (phone number verification) at the same moment it creates their first <code>Membership</code>. They complete personal particulars and pre-register dependants/beneficiaries (FR-MEM-03) — this matters because a bereavement claim later is checked against names entered <em>before</em> the event, never added retroactively. The system places them in that org's configured initial state (Pending, Probation, or Active, per FR-MEM-01) and starts the tenure clock and the four grace/waiting-period timers (Section 12.4) from whichever date that org's own rules specify.</p>
+      <p><strong>Joining a second, unrelated group.</strong> The same person follows a second org's own invite link, or taps "Join another group" inside the app. Because their <code>Account</code> already exists, there's no repeat phone-number verification — the flow only creates a new <code>Membership</code>, scoped entirely to the new org: its own tenure clock, its own contribution schedule, its own approval chains. Dependants are <strong>prefilled from an existing membership as a convenience, but never carried over as already-verified</strong> — each org has its own standard for what counts as a "recognised" spouse or child, so the member must explicitly re-confirm each dependant before it counts as pre-registered for that org's claims. The workspace switcher (Section 7) now shows both memberships; only one is ever active on screen.</p>
+      <div class="fr"><div class="frhead"><span class="frid">FR-MEM-09</span></div><p>Registering into an organisation for the first time shall create an <code>Account</code> only if the person does not already hold one; an existing <code>Account</code> shall gain an additional <code>Membership</code> without repeating identity verification.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-MEM-10</span></div><p>When a member with an existing Membership elsewhere registers a new Membership, the system may prefill dependant/beneficiary records from the existing Membership as a data-entry convenience, but each prefilled dependant shall require explicit re-confirmation before it is treated as pre-registered for that organisation's own claims.</p></div>
+    </section>
+
+    <!-- 8 -->
+    <section id="functional">
+      <div class="kicker"><span class="num">08</span>Functional requirements</div>
+      <h2>What the system must do</h2>
+      <p class="lede">Grouped by module. Each requirement is numbered <code>FR-&lt;module&gt;-&lt;n&gt;</code> for traceability into test plans.</p>
+
+      <h3 id="fr-onboarding"><span class="id">8.1</span>Tenant &amp; organisation onboarding</h3>
+      <div class="fr"><div class="frhead"><span class="frid">FR-ONB-01</span></div><p>A prospective organisation shall be able to self-register a tenant from the mobile app without platform-owner intervention, subject to identity verification of the founding admin.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-ONB-02</span></div><p>The system shall provide a guided constitution wizard covering governance, contributions, benefits, eligibility, and defaulter policy, producing a structured configuration object rather than free text.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-ONB-03</span></div><p>The system shall allow attaching reference documents (the organisation's actual constitution) to a tenant without treating them as an executable rule source.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-ONB-04</span></div><p>The system shall support cloning an existing tenant's configuration as a starting template for a new tenant (e.g. "start from a university staff-welfare template").</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-ONB-05</span></div><p>The system shall present a plain-language, member-facing summary of the configured rules for admin sign-off before activation.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-ONB-06</span></div><p>Where an uploaded source document contains internally contradictory figures for the same rule (e.g. a due stated as both "Ten Ghana Cedis" and "GHc 5.00" in the same clause — a real defect found in one of the four source constitutions), the wizard shall surface the contradiction to the admin as a warning requiring an explicit choice, and shall never silently resolve it to either value.</p></div>
+
+      <h3 id="fr-membership"><span class="id">8.2</span>Membership management</h3>
+      <div class="fr"><div class="frhead"><span class="frid">FR-MEM-01</span></div><p>The system shall support member lifecycle states: <em>Pending</em>, <em>Probation</em>, <em>Active (good standing)</em>, <em>Grace</em>, <em>Defaulter</em>, <em>Suspended</em>, <em>Exited</em>, <em>Deceased</em>, each configurable per tenant as to entry/exit conditions.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-MEM-02</span></div><p>The system shall enforce a configurable waiting period (e.g. UDS's 6 months, AGAOSAS's 3-month probation) before a member becomes eligible for any benefit, independent of contribution status.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-MEM-03</span></div><p>The system shall support member-declared dependants/beneficiaries (spouse, children, parents) as first-class records, pre-registered and time-stamped, mirroring St. Peter's and MoWH's "personal particulars form" requirement, so that a bereavement claim can be validated against a name registered <em>before</em> the event.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-MEM-04</span></div><p>The system shall support member transfer between chapters of the same organisation without loss of tenure or contribution history.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-MEM-05</span></div><p>The system shall support voluntary exit with a configurable settlement rule (e.g. 1/3 refund, 75% refund, forfeiture) computed automatically from contribution history and benefit-claim history.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-MEM-06</span></div><p>The system shall support a configurable re-entry policy for previously exited members (AGAOSAS: one chance, arrears + fresh probation).</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-MEM-07</span></div><p>The system shall distinguish membership <em>categories</em> ineligible for contribution/benefit (e.g. UDS contract staff) from the standard category, without requiring a separate tenant.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-MEM-08</span></div><p>The system shall model a person's login identity (<code>Account</code>) as distinct from any single organisation's membership record (<code>Member</code>), so one account can hold multiple memberships across different tenants, switchable in-app, without weakening the tenant-isolation guarantees in Section 21 or merging financial standing between organisations.</p></div>
+
+      <h3 id="fr-governance"><span class="id">8.3</span>Governance &amp; committee configuration</h3>
+      <div class="fr"><div class="frhead"><span class="frid">FR-GOV-01</span></div><p>The system shall allow a tenant to define an arbitrary number of governance bodies (assembly, council, committees), each with a name, membership composition rule, quorum, tie-break rule, and meeting cadence.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-GOV-02</span></div><p>The system shall support term limits and cooling-off periods for officer roles, and shall auto-flag a role as vacant when its holder's membership status changes to Exited or Deceased.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-GOV-03</span></div><p>The system shall support recording motions, minutes, and votes for any configured meeting, with a configurable notice period and quorum check before a vote can be recorded as valid.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-GOV-04</span></div><p>The system shall support a "vote of no confidence" workflow that reassigns a role to a designated successor (e.g. Vice-Chair) pending a fresh election.</p></div>
+
+      <h3 id="fr-rules"><span class="id">8.4</span>Financial rule engine</h3>
+      <div class="fr"><div class="frhead"><span class="frid">FR-RULE-01</span></div><p>The system shall represent every contribution obligation, benefit entitlement, eligibility gate, and penalty as a versioned, effective-dated configuration record scoped to a tenant (and optionally a chapter).</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-RULE-02</span></div><p>The system shall never delete a rule version; amendments create a new version with an effective date, and historical transactions remain evaluated against the rule version in force at the time.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-RULE-03</span></div><p>The system shall support rule amendment via the same governance workflow the tenant configured (Section 8.3) — e.g. requiring committee recommendation before a Chair or Assembly can activate a new rule version.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-RULE-04</span></div><p>The system shall support per-relative-type benefit definitions (spouse, child, parent, self/member) with independent amounts and independent occurrence caps (e.g. "child death, cap 3", "parent death, cap 1 per parent").</p></div>
+
+      <h3 id="fr-ledger"><span class="id">8.5</span>Contributions &amp; ledger</h3>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LED-01</span></div><p>The system shall support multiple concurrent contribution plans per tenant (e.g. a monthly due plus a one-time registration fee plus event-triggered levies, as in AGAOSAS).</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LED-02</span></div><p>The system shall support both push collection (member-initiated payment) and pull collection (payroll deduction file export/import) as configurable per-plan mechanisms.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LED-03</span></div><p>The system shall support advance payment of future contribution periods, crediting the member's standing forward and displaying a "paid through" date.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LED-04</span></div><p>The system shall reconcile payroll-file remittances against expected per-member obligations and surface variances (short-paid, unremitted, over-paid) to the Treasurer role.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LED-05</span></div><p>The system shall maintain an immutable, append-only transaction ledger per fund, from which all statements and reports are derived (never mutate a posted transaction; corrections are reversing entries).</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LED-06</span></div><p>The system shall support ring-fenced sub-funds where a constitution requires it (e.g. a separate imprest float per campus/chapter, per UDS).</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LED-07</span></div><p>The system shall support a member wallet: a stored-value balance that can be topped up and applied toward <em>any</em> of that member's obligations (not pre-committed to one specific contribution period the way advance payment in FR-LED-03 is), modelled as a liability account per member on the tenant's ledger (Section 12).</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LED-08</span></div><p>Member wallet balances shall be one-directional: top-up and apply-to-obligation only. The system shall not support cash withdrawal from a wallet or member-to-member wallet transfer — a wallet's only paths out are settling an obligation or the standard exit-refund mechanism (FR-MEM-05) — to keep the platform clearly outside e-money/mobile-money-issuer licensing territory rather than a SaaS tool managing an association's own funds.</p></div>
+      <p class="small">This module's underlying accounting model — full double-entry, not just an append-only log — is specified in Section 12. Core ledger primitives (chart of accounts, journal entries, immutability, wallet-as-liability) are in scope for initial launch; advanced modules (investment tracking, budgeting, imprest automation) are Phase 2 — see Section 23.</p>
+
+      <h3 id="fr-claims"><span class="id">8.6</span>Claims &amp; benefit disbursement</h3>
+      <div class="fr"><div class="frhead"><span class="frid">FR-CLM-01</span></div><p>The system shall let a member (or an admin on their behalf) file a claim against a configured benefit type, capturing the required evidence type for that benefit (e.g. death certificate, hospital admission note, marriage certificate).</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-CLM-02</span></div><p>The system shall evaluate claim eligibility automatically against tenure, good-standing, occurrence-cap, and waiting-period rules, and shall block submission (with a clear reason) when a hard rule fails, while flagging soft/discretionary conditions for human review.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-CLM-03</span></div><p>The system shall route a claim through the tenant's configured approval chain (e.g. Convener verifies → Committee recommends → Treasurer disburses), recording each actor and timestamp.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-CLM-04</span></div><p>The system shall support two claim registers per constitution's own language where required (applications vs. approved-and-paid, per UDS Finance Committee duty), derivable as a report rather than a separate data store.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-CLM-05</span></div><p>The system shall support discretionary/graded benefits (e.g. MoWH's severity-graded illness subsidy, GHS 500–1,000) where an approver selects within a configured band rather than a fixed amount, with the choice recorded and reportable.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-CLM-06</span></div><p>The approval chain shall support sequential, parallel, and amount-threshold-based routing (e.g. "claims under GHS 1,000: Welfare Officer → Treasurer"; "claims over GHS 5,000: Welfare Officer → Finance Committee → Chairman → Treasurer") within a configurable in-app workflow state machine. A dedicated workflow-engine dependency (Temporal/Camunda) is not required for v1 — see Section 05.</p></div>
+
+      <h3 id="fr-defaulter"><span class="id">8.7</span>Defaulter management &amp; anti-abuse</h3>
+      <p>Detailed algorithmically in Section 14; functional requirements only, here.</p>
+      <div class="fr"><div class="frhead"><span class="frid">FR-DEF-01</span></div><p>The system shall track consecutive missed-contribution counts per member per plan and transition membership status automatically per configured thresholds (AGAOSAS: 2 months → not in good standing; 3 months → forfeiture of entitlement).</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-DEF-02</span></div><p>The system shall require arrears to be cleared before restoring good standing, and shall support a configurable order-of-application for part-payments against oldest arrears first (per AGAOSAS's "prior arrears before current").</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-DEF-03</span></div><p>The system shall detect and flag "dumping" patterns — a member with low lifetime contribution consistency filing a claim shortly after resuming payment — for manual committee review rather than silently paying out.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-DEF-04</span></div><p>The system shall support a minimum contribution-months-before-eligible rule independent of calendar tenure, so a member who joined long ago but paid irregularly is treated differently from one who has paid consistently since joining.</p></div>
+
+      <h3 id="fr-payments"><span class="id">8.8</span>Payments</h3>
+      <div class="fr"><div class="frhead"><span class="frid">FR-PAY-01</span></div><p>The system shall support in-app contribution payment via mobile money (MTN MoMo, Telecel Cash, AirtelTigo Money), card networks, and bank transfer, brokered through a licensed payment aggregator.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-PAY-02</span></div><p>The system shall support payroll-deduction as a first-class collection channel, including generating an employer-facing deduction file and reconciling its return.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-PAY-05</span></div><p>The system shall support proxy payment: a member may pay toward another named member's obligation within the same organisation. The transaction shall record the paying identity and the obligation-holder as two distinct fields — never conflating them — so both parties' payment histories and consistency scores (Section 14.1) remain accurate.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-PAY-06</span></div><p>A member with an existing wallet balance (Section 8.5, FR-LED-07) shall be able to settle an obligation from that balance without initiating a new payment, covering the case where they currently have no funds on their payment instrument.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-PAY-03</span></div><p>The system shall support disbursement of approved benefits via mobile money or bank transfer to the beneficiary (member or named next-of-kin), with payout confirmation captured against the claim record.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-PAY-04</span></div><p>The system shall reconcile every payment provider's webhook/callback against the ledger within a bounded SLA and surface unreconciled transactions to the Treasurer.</p></div>
+
+      <h3 id="fr-reporting"><span class="id">8.9</span>Reporting &amp; analytics</h3>
+      <p>Full catalogue in Section 16; the requirement here is that reporting be a query layer over the immutable ledger and claim history, not a parallel data entry surface.</p>
+
+      <h3 id="fr-rbac"><span class="id">8.10</span>Role-based access control</h3>
+      <p>Detailed in Section 13.</p>
+
+      <h3 id="fr-comms"><span class="id">8.11</span>Notifications &amp; communication</h3>
+      <div class="fr"><div class="frhead"><span class="frid">FR-COM-01</span></div><p>The system shall send configurable reminders ahead of a contribution due date, and configurable escalating alerts as a member approaches a default threshold.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-COM-02</span></div><p>The system shall notify relevant approvers when a claim enters their stage of the approval chain, and notify the claimant at each status change.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-COM-03</span></div><p>The system shall support meeting notices with the tenant's configured minimum notice period, and shall record delivery/read receipts where the constitution treats notice as a formal requirement (e.g. St. Peter's 48-hour rule, MoWH's 7-day rule).</p></div>
+
+      <h3 id="fr-audit"><span class="id">8.12</span>Audit &amp; document management</h3>
+      <div class="fr"><div class="frhead"><span class="frid">FR-AUD-01</span></div><p>The system shall provide a time-boxed, read-only Auditor role with export access to ledgers, receipts, and claim trails for a defined period, without standing access thereafter.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-AUD-02</span></div><p>The system shall log every rule change, role assignment, approval action, and disbursement with actor, timestamp, and before/after state, retained for the tenant's configured statutory period.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-AUD-03</span></div><p>The system shall support attaching source evidence documents (death certificates, admission notes, minutes) to the specific transaction or claim they substantiate.</p></div>
+
+      <h3 id="fr-elections"><span class="id">8.13</span>Elections &amp; resolution voting</h3>
+      <div class="fr"><div class="frhead"><span class="frid">FR-ELC-01</span></div><p>The system shall support configuring an election for one or more offices, with candidacy eligibility rules (e.g. AGAOSAS's minimum-6-months-membership, three-endorser rule), a nomination window, and a voting window.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-ELC-02</span></div><p>The system shall support simple-majority and threshold-majority (e.g. AGAOSAS's 70% for an uncontested seat) win conditions per election.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-ELC-03</span></div><p>The system shall record and publish election results to the membership without exposing individual vote choices.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-ELC-04</span></div><p>The same voting mechanism shall support general resolutions and motions (e.g. "raise the monthly due to GHS 30," "approve the amended constitution," "ratify a committee's discretionary exception") as well as candidacies — a resolution is simply a vote whose subject is a proposal rather than a person, sharing the same nomination-window/voting-window/quorum machinery as Section 8.3's motions.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-ELC-05</span></div><p>The system shall support a configurable live-tally display per governance body — some bodies will want the running count visible as votes come in, others will want it withheld until the window closes to avoid bandwagon effects — defaulting to hidden-until-close unless the tenant explicitly enables live display for a given body or vote.</p></div>
+    </section>
+
+    <!-- 9 -->
+    <section id="nfr">
+      <div class="kicker"><span class="num">09</span>Non-functional requirements</div>
+      <h2>Qualities the system must have</h2>
+
+      <h4>Scale &amp; performance</h4>
+      <ul>
+        <li>Support tens of thousands of tenants and low millions of members platform-wide; a single tenant may range from a 5-person alumni cohort to a multi-campus employer with tens of thousands of staff.</li>
+        <li>P95 API latency &lt; 300 ms for read paths (balance, standing, statement); claim submission and payment initiation &lt; 2 s end-to-end excluding external payment-provider round trips.</li>
+        <li>Ledger writes must be strictly ordered and idempotent under retry (payment webhooks routinely double-deliver).</li>
+      </ul>
+      <h4>Availability &amp; resilience</h4>
+      <ul>
+        <li>Target 99.9% platform availability; graceful degradation to read-only mode during payment-provider outages rather than full outage.</li>
+        <li>Offline-tolerant mobile client: dues payment history, standing status, and claim drafts must be viewable/composable without connectivity, syncing on reconnect — most source constitutions serve rural/campus populations with patchy connectivity.</li>
+      </ul>
+      <h4>Security &amp; privacy</h4>
+      <ul>
+        <li>Tenant data isolation must be provable, not just conventional (see Section 21).</li>
+        <li>PII (national ID, next-of-kin details, medical evidence) encrypted at rest, field-level for the most sensitive categories.</li>
+        <li>Payment credential data never touches platform servers directly — tokenised via PCI-DSS-compliant aggregator.</li>
+        <li>Compliance with Ghana's Data Protection Act 2012 as the primary jurisdiction evidenced by the source documents, designed extensibly for other data-protection regimes as the platform expands geographically.</li>
+      </ul>
+      <h4>Auditability</h4>
+      <ul>
+        <li>Every financial rule, role grant, and disbursement must be reconstructable after the fact — "what rule was in force, who approved it, why" — without relying on application logs alone.</li>
+      </ul>
+      <h4>Localisation</h4>
+      <ul>
+        <li>Multi-currency-ready even though GHS dominates the source set; English first, with a translation layer for future local-language support.</li>
+      </ul>
+      <h4>Extensibility</h4>
+      <ul>
+        <li>New benefit types, contribution mechanisms, and approval-chain shapes must be addable via configuration/admin UI, not a schema migration, for at least the patterns evidenced across the four source constitutions.</li>
+      </ul>
+    </section>
+
+    <!-- 10 -->
+    <section id="datamodel">
+      <div class="kicker"><span class="num">10</span>Domain data model</div>
+      <h2>Core entities</h2>
+      <p class="lede">Deliberately small at the core; expressive power lives in the rule-configuration entities (Section 11), not in a proliferating set of table types.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Entity</th><th>Key attributes</th><th>Relationships</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Account</strong></td><td>phone number, auth credentials — <em>not</em> tenant-scoped</td><td>the login identity; has many Members (Section 7's identity-vs-membership split), one per organisation joined</td></tr>
+            <tr><td><strong>Organisation</strong> (tenant)</td><td>legal name, type, country, currency, status</td><td>has many Chapters, Members, RuleSets, Funds</td></tr>
+            <tr><td><strong>Chapter</strong></td><td>name, parent org, override flags</td><td>belongs to Organisation; has many Members (optional layer)</td></tr>
+            <tr><td><strong>Member</strong></td><td>join date, status, chapter, tenure clock</td><td>belongs to one Account and one Organisation/Chapter; has many RoleAssignments, Dependants, ContributionRecords, Claims, and one Wallet</td></tr>
+            <tr><td><strong>Wallet</strong></td><td>balance (derived from journal lines, never stored directly)</td><td>belongs to Member; modelled as a liability LedgerAccount (Section 12.5); top-up and apply-to-obligation only, no withdrawal or transfer</td></tr>
+            <tr><td><strong>Dependant</strong></td><td>relationship type, name, registered date</td><td>belongs to Member; referenced by Claim as beneficiary or trigger subject</td></tr>
+            <tr><td><strong>Role</strong> &amp; <strong>RoleAssignment</strong></td><td>name, permission set, term start/end</td><td>Role belongs to Organisation; RoleAssignment links Member ↔ Role ↔ Governance Body</td></tr>
+            <tr><td><strong>GovernanceBody</strong></td><td>name, quorum rule, tie-break rule, cadence</td><td>belongs to Organisation; has many RoleAssignments, Meetings</td></tr>
+            <tr><td><strong>ContributionPlan</strong></td><td>name, cadence, computation type, collection mechanism</td><td>belongs to Organisation; versioned via RuleVersion; drives ContributionRecords</td></tr>
+            <tr><td><strong>BenefitRule</strong></td><td>trigger event, subject type, amount/band, occurrence cap, evidence requirement</td><td>belongs to Organisation; versioned; evaluated by Claims</td></tr>
+            <tr><td><strong>EligibilityRule</strong></td><td>waiting period, good-standing test, tenure test</td><td>attached to ContributionPlan and/or BenefitRule</td></tr>
+            <tr><td><strong>DefaulterPolicy</strong></td><td>missed-period thresholds, consequence per threshold, arrears-application order</td><td>belongs to Organisation; evaluated per Member per ContributionPlan</td></tr>
+            <tr><td><strong>ApprovalChain</strong></td><td>ordered stages, required role per stage</td><td>attached to BenefitRule (and optionally ContributionPlan exceptions)</td></tr>
+            <tr><td><strong>RuleVersion</strong></td><td>effective_from, effective_to, created_by, approved_by, source rule id</td><td>wraps ContributionPlan / BenefitRule / EligibilityRule / DefaulterPolicy changes</td></tr>
+            <tr><td><strong>Fund</strong></td><td>name (General/Funeral/Emergency/…), scope (org/chapter), balance (derived, never stored)</td><td>belongs to Organisation/Chapter; has many LedgerAccounts</td></tr>
+            <tr><td><strong>LedgerAccount</strong></td><td>type (asset/liability/income/expense/equity), code, name</td><td>belongs to Fund's chart of accounts (§12); has many JournalLines</td></tr>
+            <tr><td><strong>JournalEntry</strong> / <strong>JournalLine</strong></td><td>posted_at, reference, immutable; each line: account, debit/credit, amount; a contribution payment additionally carries <code>paid_by_member</code> and <code>for_member</code> as distinct fields, equal unless the payment was a proxy payment (§8.8, FR-PAY-05)</td><td>every financial event — contribution, disbursement, penalty, refund, reversal — posts one balanced JournalEntry; supersedes a flat "Transaction" table (§12)</td></tr>
+            <tr><td><strong>Claim</strong></td><td>benefit rule ref, status, evidence refs, amount awarded</td><td>belongs to Member; has many ApprovalActions; produces a JournalEntry on payout</td></tr>
+            <tr><td><strong>ApprovalAction</strong></td><td>stage, actor, decision, timestamp, note</td><td>belongs to Claim</td></tr>
+            <tr><td><strong>Meeting</strong> / <strong>Motion</strong></td><td>notice date, quorum met, outcome</td><td>belongs to GovernanceBody</td></tr>
+            <tr><td><strong>Vote</strong> / <strong>Candidacy</strong> / <strong>Ballot</strong></td><td>subject (office <em>or</em> resolution text), window, win condition, live-tally flag, result</td><td>belongs to Organisation and optionally a Motion; Candidacy belongs to Member (§8.13 — elections and resolution votes share this one construct)</td></tr>
+            <tr><td><strong>DisbursementAuthorization</strong></td><td>required signatory count (N-of-M), designated signatories, status</td><td>belongs to Organisation; attached to an Expense or a bulk Transfer (§12.5)</td></tr>
+            <tr><td><strong>Expense</strong> / <strong>Income</strong></td><td>category, purpose, amount, receipt ref, payer/vendor</td><td>belongs to Fund; posts a JournalEntry; may require a DisbursementAuthorization above threshold</td></tr>
+            <tr><td><strong>AuditLogEntry</strong></td><td>actor, action, before/after, timestamp</td><td>references any of the above by polymorphic id</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout insight">
+        <div class="ctitle">Why this is full double-entry, not just an append-only log</div>
+        <p>Every source constitution treats the treasurer's ledger as the single source of financial truth subject to audit (MoWH's annual audit, AGAOSAS's 72-hour audit-committee turnaround). An immutable, append-only log of transactions is the minimum bar — but three of the four independent AI analyses stopped there. Grok's analysis pushed further to a proper chart of accounts and balanced journal entries, which is what actually answers "what did the books say on 30 June" for multi-fund allocations, reconciliation against a payment gateway, and a correction that itself needs to be auditable. Section 12 adopts the stronger model.</p>
+      </div>
+    </section>
+
+    <!-- 11 -->
+    <section id="ruleengine">
+      <div class="kicker"><span class="num">11</span>Rule engine specification</div>
+      <h2>Turning clauses into configuration</h2>
+      <p class="lede">Two worked examples, taken directly from the source constitutions, showing the same schema expressing structurally different rules — framed by a pipeline that GPT's analysis names most clearly of the six.</p>
+
+      <h3><span class="id">11.1</span>The Programmable Welfare Finance Engine pipeline</h3>
+      <p>GPT's independent analysis converges on the same architecture every other source implies piecemeal, but states it as one explicit pipeline — the clearest single articulation across all six analyses, worth adopting as the vocabulary for this entire section:</p>
+      <pre><code>Constitution → Policy → Version → Rule → Obligation → Payment → Allocation
+           → Standing → Eligibility → Claim → Approval → Disbursement → Ledger</code></pre>
+      <p>Two distinctions embedded in that pipeline are easy to collapse by accident and must not be:</p>
+      <ul>
+        <li><strong>Obligation ≠ Payment.</strong> An obligation is what a member was required to pay for a given period; a payment is money actually received. AGAOSAS's own rules depend on this split — a member can owe a January contribution, pay it in June, and the system must still know it was <em>originally due in January and unpaid until June</em>, not that it was "paid on time." Collapsing the two into a single "paid = yes/no" flag destroys exactly the history the anti-dumping logic in Section 14 depends on.</li>
+        <li><strong>Historical fact ≠ current state.</strong> "February's contribution was due 28 February and paid 18 May" is a historical fact that must never change. "February's contribution is now settled" is a current-state summary derived from it. Reporting, auditing, and eligibility all need the fact preserved even after the state is resolved.</li>
+      </ul>
+      <p>A related distinction the rule engine's date arithmetic must respect: <strong>event date</strong> (when the qualifying event happened — a death, a birth, a marriage), <strong>claim date</strong> (when the member submitted), <strong>approval date</strong>, <strong>payment date</strong>, and <strong>rule-effective date</strong> are five different fields, not one "date" column. Eligibility is evaluated against whichever date the tenant's rule configuration says governs — usually the event date and the rule version in force on that date — never against "whichever date happens to be convenient," which matters most exactly when a constitution changes in the gap between an event occurring and a claim eventually being paid.</p>
+
+      <h3><span class="id">11.2</span>Example — UDS birth benefit</h3>
+      <p>Source clause: <em>"A member who gives birth to a child shall receive GH₵300.00. This benefit is limited to three (3) births only."</em></p>
+      <pre><code>{
+  "rule_type": "BenefitRule",
+  "organisation": "uds-swa",
+  "trigger_event": "member.birth",
+  "subject": "self",
+  "amount": { "type": "fixed", "value": 300, "currency": "GHS" },
+  "occurrence_cap": { "scope": "lifetime", "max": 3 },
+  "eligibility": { "min_tenure_months": 6, "good_standing_required": true },
+  "evidence_required": ["birth_notification"],
+  "approval_chain": ["convener_verify", "welfare_committee_recommend", "treasurer_disburse"],
+  "effective_from": "2020-01-01",
+  "effective_to": null
+}</code></pre>
+
+      <h3><span class="id">11.3</span>Example — AGAOSAS bereavement, post-amendment</h3>
+      <p>Source clause (current version): <em>"A member shall be entitled to a benefit of GH¢3,000.00 in the event of the death of a parent, spouse, or child."</em> — superseding an earlier GHC 1,000/500 flat regime still visible elsewhere in the same document.</p>
+      <pre><code>{
+  "rule_type": "BenefitRule",
+  "organisation": "agaosas",
+  "trigger_event": "dependant.death",
+  "subject": ["spouse", "child", "parent"],
+  "amount": { "type": "fixed", "value": 3000, "currency": "GHS" },
+  "occurrence_cap": { "scope": "per_relationship_type", "max": 1 },
+  "eligibility": {
+    "min_tenure_months": 3,
+    "good_standing_required": true,
+    "max_consecutive_missed_periods": 2
+  },
+  "evidence_required": ["death_certificate"],
+  "approval_chain": ["executive_committee_verify", "treasurer_disburse"],
+  "effective_from": "2024-03-01",
+  "supersedes": "agaosas-bereavement-v1",
+  "created_by": "member:secretary-general",
+  "approved_by": "vote:general_meeting_2024_03"
+}</code></pre>
+
+      <div class="callout decision">
+        <div class="ctitle">Why versioning, not overwrite</div>
+        <p>The AGAOSAS document itself is a redline in progress — old and new figures coexist in the file the association actually operates from. A platform that merely stores "current amount" cannot answer "what was owed to a member who died in 2023," which is precisely the kind of question an audit committee will ask. Effective-dated versions with an explicit <code>supersedes</code> link make that answerable by construction.</p>
+      </div>
+
+      <h3><span class="id">11.4</span>Explainability &amp; simulation</h3>
+      <p>GPT's analysis proposes both of the following as named capabilities; neither appears in the other five in this explicit a form, but both follow directly from a rule engine that is already declarative and versioned — the marginal cost of adding them is mostly in the UI, not the underlying model.</p>
+      <ul>
+        <li><strong>"Why am I / am I not eligible?" engine</strong> — every eligibility decision the rule engine makes must be answerable in plain language, not just true/false. Example: <em>"You are not currently eligible for the Funeral Benefit. You have been a member for 14 months, satisfying the 3-month requirement. However, your March, April and May contributions remain unpaid, and this organisation suspends eligibility after more than two consecutive missed months."</em> This reasoning must be generated deterministically from the rule evaluation trace — never an AI paraphrase invented after the fact.</li>
+        <li><strong>Rule simulator / sandbox</strong> — before a proposed <code>RuleVersion</code> goes live, an admin can run hypothetical scenarios against it ("member joined 1 January, missed April and May, parent dies 15 June — what would this rule produce?") and see which conditions passed, which failed, and the resulting calculation, without touching a real account or ledger.</li>
+      </ul>
+      <div class="fr"><div class="frhead"><span class="frid">FR-RULE-05</span></div><p>Every eligibility determination (pass or fail) shall be traceable to the specific rule conditions evaluated, in a form renderable as a plain-language explanation to the member or admin.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-RULE-06</span></div><p>The system shall provide a sandbox in which a proposed rule version can be evaluated against hypothetical member scenarios before activation, with no effect on real accounts or ledgers.</p></div>
+    </section>
+
+    <!-- 12 -->
+    <section id="ledger">
+      <div class="kicker"><span class="num">12</span>Ledger &amp; accounting architecture</div>
+      <h2>Full double-entry, not a payments table</h2>
+      <p class="lede">Only one of the four independent analyses (Grok) specified this; this consolidated spec adopts it anyway, upgrading the "immutable transaction log" pattern the other three (including the original version of this document) settled for — because reconciliation, multi-fund allocation, and audit-defensible corrections all genuinely need it.</p>
+
+      <h3><span class="id">12.1</span>Chart of accounts</h3>
+      <p>Every Fund (Section 10) owns its own chart of accounts: <strong>Assets</strong> (cash, bank, mobile-money, gateway-clearing, settlement accounts), <strong>Liabilities</strong> (benefits payable, member advance-payment credits), <strong>Income</strong> (contributions, donations, grants, investment interest), <strong>Expenses</strong> (benefits paid, penalties waived, operating costs), and a <strong>Fund/Equity</strong> balance that is always the residual of the above — never a separately-edited number.</p>
+
+      <h3><span class="id">12.2</span>Journal entries &amp; multi-fund allocation</h3>
+      <p>Every financial event — a contribution received, a benefit disbursed, a penalty applied, a refund issued, a transfer between funds — posts exactly one <strong>JournalEntry</strong> composed of two or more balanced <strong>JournalLines</strong> (total debits = total credits). Once posted, an entry is never edited or deleted; corrections are reversing/contra entries, fully traceable to the original.</p>
+      <p>A single contribution can be split across multiple funds by a configurable percentage allocation — e.g. GHS 100 → GHS 60 to the General Welfare Fund, GHS 25 to the Funeral Fund, GHS 15 to the Emergency Fund. Changing that split takes effect prospectively only; it must never rewrite how a historical contribution was already allocated.</p>
+
+      <h3><span class="id">12.3</span>Reconciliation</h3>
+      <p>Three reconciliation loops run continuously rather than only at audit time: payment-gateway settlement vs. internal ledger, bank statement vs. ledger, and cash collections vs. posted receipts. Each flags unmatched entries, duplicates, and amount mismatches to the Treasurer role for resolution — the system never auto-corrects a mismatch on its own.</p>
+
+      <div class="fr"><div class="frhead"><span class="frid">FR-LEDGER-01</span></div><p>The system shall maintain a per-fund chart of accounts and post every financial event as a balanced JournalEntry.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LEDGER-02</span></div><p>Posted JournalEntries shall be immutable; corrections shall only be made via reversing or contra entries, each referencing the entry it corrects.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LEDGER-03</span></div><p>The system shall support configurable percentage-based allocation of a single contribution across multiple funds, with allocation changes applying prospectively only.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LEDGER-04</span></div><p>The system shall run automated reconciliation between (a) payment-gateway settlement records, (b) bank statements, and (c) the internal ledger, surfacing exceptions rather than auto-resolving them.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LEDGER-05</span></div><p>Fund balances shall always be derived from the sum of posted journal lines, never stored and independently editable.</p></div>
+
+      <h3><span class="id">12.4</span>Obligation lifecycle, allocation, and grace-period taxonomy</h3>
+      <p>GPT's analysis is the most precise of the six on three related points worth adopting verbatim rather than re-deriving.</p>
+      <p><strong>Obligation status</strong> is its own field, distinct from any payment: <code>Upcoming</code> → <code>Due</code> → <code>Paid</code> / <code>Partially paid</code> / <code>Overdue</code> / <code>Defaulted</code> / <code>Waived</code> / <code>Exempted</code> / <code>Written off</code> / <code>Cancelled</code>. A late payment settles the obligation financially without rewriting whether it was originally on time — the obligation record keeps its original due date forever.</p>
+      <p><strong>Payment allocation policy</strong> is configurable per tenant, matching the "arrears before current dues" pattern already found in AGAOSAS: oldest-obligation-first, newest-first, current-period-first, member-selected, admin-selected, or proportional across open obligations. Whichever policy applies, the allocation itself must be individually traceable per obligation line, not just as a lump payment.</p>
+      <p><strong>"Grace period" is at least four different things</strong> that the source constitutions conflate under one term but that must be modelled separately: a <em>joining grace period</em> (before a new member owes anything at all), a <em>payment grace period</em> (extra days after a due date before default status kicks in), a <em>benefit waiting period</em> (before a member can claim, independent of payment status), and a <em>reinstatement waiting period</em> (after clearing a default, before benefits resume). UDS's 6-month rule is a benefit waiting period; AGAOSAS's 3-month probation is closer to a joining grace period with claim restrictions layered on top — treating them as the same configuration field would silently misrepresent one or the other for any tenant that needs both.</p>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LEDGER-06</span></div><p>The system shall model joining grace period, payment grace period, benefit waiting period, and reinstatement waiting period as four independent, separately configurable durations per benefit and per contribution plan.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LEDGER-07</span></div><p>The system shall support configurable payment-allocation policies (oldest-first, newest-first, current-period-first, member-selected, admin-selected, proportional), applied consistently and each allocation independently traceable.</p></div>
+
+      <h3><span class="id">12.5</span>Disbursement authorization &amp; expense recording</h3>
+      <p>Every one of the four source constitutions gates money leaving the organisation's bank account behind named joint signatories — typically Chairman + Treasurer + Patron, sometimes with a Secretary as an emergency fallback. Section 8.6's claim-approval chain covers <em>benefit</em> payouts; it does not cover general organisational spending — paying a vendor, moving money into an investment, a bulk transfer — which needs the same joint-signatory pattern but isn't a member claim. This is modelled as its own construct rather than stretched to fit inside claims.</p>
+      <p>A <strong>Disbursement Authorization</strong> requires N-of-M configured signatories to confirm before a payment instruction releases, mirroring the real-world bank-signatory pattern directly. An <strong>Income &amp; Expense entry</strong> — a donation received, a grant, stationery bought, an AGM venue paid for — is categorised (transport, meetings, procurement, donations, grants, investment returns, …), attached to a fund, requires a supporting receipt, and posts through the same double-entry model as everything else in this section; anything above a tenant-configured threshold requires the same Disbursement Authorization as a bulk transfer.</p>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LEDGER-08</span></div><p>The system shall support a Disbursement Authorization construct requiring a tenant-configured N-of-M set of designated signatories to confirm before any non-claim organisational payment (expense, transfer, investment) is released.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LEDGER-09</span></div><p>The system shall support recording income and expense entries with category, purpose, amount, fund, supporting receipt, and payer/vendor, posting each as a balanced JournalEntry.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-LEDGER-10</span></div><p>Expense entries above a tenant-configured amount threshold shall require Disbursement Authorization sign-off before posting; entries below the threshold may follow a lighter single-approver path if the tenant so configures.</p></div>
+    </section>
+
+    <!-- 13 -->
+    <section id="rbacspec">
+      <div class="kicker"><span class="num">13</span>RBAC specification</div>
+      <h2>Permissions as resource × action × scope</h2>
+      <p class="lede">Every source constitution assigns different powers to different offices; none of them share an org chart. RBAC must therefore be a builder, not a fixed list.</p>
+
+      <h3><span class="id">13.1</span>Model</h3>
+      <ul>
+        <li><strong>Permission</strong> = (resource, action, scope). Resource examples: <code>contribution_plan</code>, <code>benefit_rule</code>, <code>claim</code>, <code>ledger</code>, <code>member</code>, <code>role</code>. Action examples: <code>view</code>, <code>create</code>, <code>approve_stage:&lt;n&gt;</code>, <code>disburse</code>, <code>amend</code>. Scope: <code>own</code>, <code>chapter</code>, <code>organisation</code>.</li>
+        <li><strong>Role</strong> = a named bundle of permissions, tenant-owned, cloneable from templates.</li>
+        <li><strong>RoleAssignment</strong> = Member × Role × (optional Chapter scope) × (term start/end), so the same person can be Convener for one chapter and an ordinary Member everywhere else.</li>
+        <li><strong>Maker-checker enforcement</strong>: the platform must be able to block the person who initiated a financial transaction (a contribution reallocation, a benefit payout, a rule amendment) from also being its sole approver — an optional but recommended constraint per tenant, not a hardcoded universal rule, since some very small groups genuinely have only one active officer.</li>
+      </ul>
+
+      <h3><span class="id">13.2</span>Illustrative permission matrix</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Role template</th><th>Rule config</th><th>Claim approval</th><th>Disbursement</th><th>Member data</th><th>Audit export</th></tr></thead>
+          <tbody>
+            <tr><td>Org Admin</td><td class="num"><span class="pill good">full</span></td><td class="num"><span class="pill good">all stages</span></td><td class="num"><span class="pill good">yes</span></td><td class="num"><span class="pill good">full</span></td><td class="num"><span class="pill good">yes</span></td></tr>
+            <tr><td>Treasurer</td><td class="num"><span class="pill warn">propose only</span></td><td class="num"><span class="pill muted">final stage</span></td><td class="num"><span class="pill good">yes</span></td><td class="num"><span class="pill muted">financial fields</span></td><td class="num"><span class="pill good">yes</span></td></tr>
+            <tr><td>Committee Chair</td><td class="num"><span class="pill warn">propose only</span></td><td class="num"><span class="pill muted">own committee stage</span></td><td class="num"><span class="pill critical">no</span></td><td class="num"><span class="pill muted">read</span></td><td class="num"><span class="pill critical">no</span></td></tr>
+            <tr><td>Convener (chapter-scoped)</td><td class="num"><span class="pill critical">no</span></td><td class="num"><span class="pill muted">verify stage, own chapter</span></td><td class="num"><span class="pill critical">no</span></td><td class="num"><span class="pill muted">own chapter</span></td><td class="num"><span class="pill critical">no</span></td></tr>
+            <tr><td>Patron (ex-officio)</td><td class="num"><span class="pill critical">no</span></td><td class="num"><span class="pill muted">sign-off only</span></td><td class="num"><span class="pill warn">co-sign</span></td><td class="num"><span class="pill muted">read</span></td><td class="num"><span class="pill critical">no</span></td></tr>
+            <tr><td>Auditor</td><td class="num"><span class="pill critical">no</span></td><td class="num"><span class="pill muted">read only</span></td><td class="num"><span class="pill critical">no</span></td><td class="num"><span class="pill muted">read, time-boxed</span></td><td class="num"><span class="pill good">yes</span></td></tr>
+            <tr><td>Member</td><td class="num"><span class="pill critical">no</span></td><td class="num"><span class="pill muted">own claims only</span></td><td class="num"><span class="pill critical">no</span></td><td class="num"><span class="pill muted">own record</span></td><td class="num"><span class="pill critical">no</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="small">Rule-config changes are gated separately by the tenant's own governance workflow (Section 8.3/8.4) — an Org Admin's "full" access still routes an amendment through committee recommendation if the tenant configured one, per <code>FR-RULE-03</code>.</p>
+    </section>
+
+    <!-- 14 -->
+    <section id="antiabuse">
+      <div class="kicker"><span class="num">14</span>Anti-abuse logic</div>
+      <h2>Defaulter management &amp; the "dumping" problem</h2>
+      <p class="lede">"Dumping" — paying only when a benefit is imminently needed — is the one failure mode every mutual-aid scheme is structurally exposed to and none of the four source constitutions fully solves in writing. The platform should solve it computationally.</p>
+
+      <h3><span class="id">14.1</span>Contribution Consistency Score</h3>
+      <p>For each member, per contribution plan, maintain a rolling score derived from the ratio of periods paid on time to periods obligated since the later of (join date, plan start date). This is distinct from — and a superset of — the binary good-standing flag every source constitution implies:</p>
+      <pre><code>consistency_score = periods_paid_on_time / periods_obligated
+eligible_for_full_benefit = (
+    tenure_months >= plan.min_tenure_months
+    AND consecutive_missed_periods <= policy.max_consecutive_missed
+    AND consistency_score >= policy.min_consistency_score   // e.g. 0.8
+)</code></pre>
+
+      <h3><span class="id">14.2</span>Graduated response, not a single cliff-edge</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>State</th><th>Trigger</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill good">Good standing</span></td><td>Consistency score above threshold, no missed periods beyond grace</td><td>Full benefit access</td></tr>
+            <tr><td><span class="pill warn">Grace</span></td><td>1 missed period within configured grace window</td><td>Reminder issued; benefit access unaffected (mirrors no source constitution penalising a single missed month)</td></tr>
+            <tr><td><span class="pill warn">At risk</span></td><td>Consecutive missed periods approaching the tenant's default threshold (AGAOSAS: 2)</td><td>Escalating notifications; claims require additional committee review even if technically still "active"</td></tr>
+            <tr><td><span class="pill critical">Defaulter</span></td><td>Threshold breached (AGAOSAS: &gt;2 consecutive months)</td><td>Benefit access suspended; arrears must clear, oldest-first, before restoration</td></tr>
+            <tr><td><span class="pill critical">Forfeited</span></td><td>Deeper threshold breached (AGAOSAS: 3 consecutive missed dues)</td><td>All accrued entitlement lost per tenant policy; re-entry (if permitted) restarts probation</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3><span class="id">14.3</span>Dumping-pattern detection</h3>
+      <p>A claim filed within a configurable cooldown window (e.g. 30–90 days) of a member <em>exiting Defaulter status</em> is auto-flagged — not blocked — for mandatory committee-level review, with the member's full consistency history surfaced to the approver. This directly operationalises AGAOSAS's own written caution: <em>"these incidents will need to be verified before donations are done to avoid future misunderstanding."</em></p>
+
+      <p>Two further mechanisms, each proposed by only one of the four independent analyses but consistent with the source constitutions, are folded in here rather than treated as separate features: <strong>first-claim-only refund forfeiture</strong> — a member who has ever received a benefit payout forfeits the favourable exit-refund percentage on later resignation (the UDS pattern, generalised); and <strong>notice-window gaming prevention</strong> — benefits that require advance notice (marriage, outdooring) are time-stamped at submission and a late submission is rejected or flagged, never silently backdated.</p>
+
+      <h3><span class="id">14.4</span>Proportional/vesting payout (recommended extension)</h3>
+      <p>Beyond what any source document specifies, the platform should offer tenants an optional payout-scaling rule: benefit amount scales with consistency score above a floor (e.g. 100% payout at ≥95% consistency, tapering to a configured floor at the minimum eligible score), rather than a strict binary gate. This gives committees a middle ground between "pay in full" and "refuse entirely" — closer to the discretionary spirit MoWH's severity-graded illness benefit already shows for a different axis (severity rather than consistency).</p>
+
+      <h3><span class="id">14.5</span>Exit settlement as a function, not a lookup</h3>
+      <pre><code>exit_refund = policy.exit_refund_fraction * total_contributions_paid
+              IF never_claimed_a_benefit
+              ELSE 0   // per UDS & MoWH precedent: prior benefit use forfeits refund
+</code></pre>
+    </section>
+
+    <!-- 15 -->
+    <section id="paymentsarch">
+      <div class="kicker"><span class="num">15</span>Payments architecture</div>
+      <h2>Money in, money out</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Channel</th><th>Direction</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Mobile money (MTN MoMo, Telecel Cash, AirtelTigo Money)</td><td>In &amp; out</td><td>Primary rail for member-initiated dues and for benefit disbursement to individuals; via a licensed aggregator (e.g. Paystack, Flutterwave, Hubtel) rather than direct MNO integration, for compliance and multi-network coverage</td></tr>
+            <tr><td>Cards (Visa/Mastercard)</td><td>In</td><td>Secondary rail for diaspora/salaried members; tokenised, never stored on platform servers</td></tr>
+            <tr><td>Bank transfer</td><td>In &amp; out</td><td>Required for large disbursements and for organisations whose constitution mandates a named bank (St. Peter's: Prudential Bank; MoWH: EC-determined)</td></tr>
+            <tr><td>Payroll deduction file</td><td>In (bulk)</td><td>Employer-linked tenants (UDS, St. Peter's, MoWH) collect via salary deduction, not app-initiated payment; the app ingests a remittance file/report and reconciles it against per-member obligations</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Reconciliation &amp; ledger integrity</h4>
+      <ul>
+        <li>Every inbound webhook is deduplicated by provider transaction id before ledger posting.</li>
+        <li>Payroll remittance files are matched line-by-line against expected obligations; variances create a reviewable reconciliation exception, not a silent adjustment.</li>
+        <li>Disbursements require the tenant's configured approval chain to be fully satisfied before the payment instruction is released to the provider — the system should be structurally incapable of paying out an unapproved claim.</li>
+        <li>Bank-account governance (e.g. "totally divorced from parent institution" per UDS; joint signatories per St. Peter's/MoWH) is a policy constraint on <em>who can approve a disbursement instruction</em>, not merely documentation.</li>
+      </ul>
+    </section>
+
+    <!-- 16 -->
+    <section id="reportscat">
+      <div class="kicker"><span class="num">16</span>Reporting catalogue</div>
+      <h2>Reports &amp; analytics</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Report</th><th>Audience</th><th>Cadence</th><th>Key content</th></tr></thead>
+          <tbody>
+            <tr><td>Contribution summary</td><td>Treasurer, Finance Cttee</td><td>Monthly / on-demand</td><td>Expected vs. collected, by plan, by chapter</td></tr>
+            <tr><td>Member statement</td><td>Member (self-service)</td><td>On-demand</td><td>Full payment history, standing status, benefit history, paid-through date</td></tr>
+            <tr><td>Defaulter register</td><td>Treasurer, Committees</td><td>Monthly</td><td>Members by standing state, consecutive-missed count, arrears owed</td></tr>
+            <tr><td>Claims register (applications vs. paid)</td><td>Finance/Welfare Cttee</td><td>Continuous</td><td>Mirrors UDS's two-register requirement — pending vs. disbursed, with approval-stage timing</td></tr>
+            <tr><td>Disbursement report</td><td>Board/Trustees, Auditor</td><td>Per meeting cycle</td><td>Amounts, beneficiaries, benefit type, approver trail</td></tr>
+            <tr><td>Reconciliation exceptions</td><td>Treasurer</td><td>Real-time</td><td>Unmatched payments, short-paid payroll remittances</td></tr>
+            <tr><td>Fund position / balance sheet</td><td>AGM, Board</td><td>Annual + on-demand</td><td>Per-fund balance, inflow/outflow trend, sub-fund (chapter) breakdown</td></tr>
+            <tr><td>Income register</td><td>Treasurer, Finance Cttee</td><td>Continuous / monthly roll-up</td><td>Donations, grants, investment interest, contributions — by category and fund (Section 12.5)</td></tr>
+            <tr><td>Expense register</td><td>Treasurer, Finance Cttee, Auditor</td><td>Continuous / monthly roll-up</td><td>Every non-claim organisational expense — category, receipt, approver, Disbursement Authorization trail (Section 12.5)</td></tr>
+            <tr><td>Member wallet statement</td><td>Member (self-service)</td><td>On-demand</td><td>Top-ups, applications to obligations, current balance (Section 8.5, FR-LED-07)</td></tr>
+            <tr><td>Audit export</td><td>Auditor</td><td>Annual / ad hoc</td><td>Full ledger, receipts, approval trails, rule-version history for the period</td></tr>
+            <tr><td>Forecast &amp; solvency insight</td><td>Board, Finance Cttee</td><td>Quarterly</td><td>Projected inflow vs. configured benefit exposure (e.g. ageing membership ⇒ rising bereavement liability) — an early-warning view no source constitution currently produces on paper</td></tr>
+            <tr><td>Governance compliance</td><td>Board, Trustees</td><td>Per cycle</td><td>Meetings held vs. required cadence, quorum met/missed, notice-period compliance</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 17 -->
+    <section id="ai">
+      <div class="kicker"><span class="num">17</span>AI capabilities</div>
+      <h2>AI proposes, humans approve — always</h2>
+      <p class="lede">Only one of the four real analyses (Claude-web) proposed AI-assisted onboarding; none proposed a member-facing assistant. Both are adopted here because they compound naturally on a rule-engine-first design without weakening it — provided the guardrail below is treated as non-negotiable.</p>
+
+      <div class="callout risk">
+        <div class="ctitle">Non-negotiable guardrail</div>
+        <p>No AI subsystem may be a stage in a disbursement approval chain, and none may write a financial rule, ledger entry, or membership status change directly. AI output is always a <em>draft</em> or a <em>read-only observation</em> that a human role must explicitly accept.</p>
+      </div>
+
+      <h3><span class="id">17.1</span>Constitution intelligence (onboarding)</h3>
+      <p>On uploading a constitution document, the system proposes a draft configuration — contribution plans, benefit rules, eligibility periods, penalties, approval chains — for the admin to review line by line before anything activates. This is also where the numeric-contradiction check from Section 8.1 lives: if the source text contains a defect like St. Peter's "Ten Ghana Cedis (GHc 5.00)," the extraction step must surface it as a warning, not silently resolve it.</p>
+
+      <h3><span class="id">17.2</span>Welfare assistant (member-facing)</h3>
+      <p>Members can ask natural-language questions — "How much do I owe?", "Am I eligible for the funeral benefit?", "Why was my claim rejected?" — answered strictly from the tenant's live rule configuration and the member's own authorised data. It never answers from general knowledge and never exposes another member's data.</p>
+
+      <h3><span class="id">17.3</span>Admin intelligence (advisory)</h3>
+      <p>Narrative insights layered over the reporting stack (Section 16) — collection trend commentary, default-pattern flags, liquidity risk, benefit-liability forecasts, anomalous-claim call-outs. Read-only and advisory; it surfaces a report, it never files one.</p>
+
+      <div class="fr"><div class="frhead"><span class="frid">FR-AI-01</span></div><p>The system shall extract a proposed configuration from an uploaded constitution document and require explicit admin approval, item by item, before any part of it activates.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-AI-02</span></div><p>The extraction step shall flag internally contradictory or ambiguous figures in the source document rather than silently resolving them.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-AI-03</span></div><p>The member-facing assistant shall answer only from the member's own authorised data and the tenant's active rule configuration, and shall have no access to disbursement or rule-amendment actions.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-AI-04</span></div><p>No AI-generated output shall be permitted as an approval stage in any workflow; it may only flag a claim, transaction, or member for human review.</p></div>
+    </section>
+
+    <!-- 18 -->
+    <section id="subscription">
+      <div class="kicker"><span class="num">18</span>Subscription &amp; billing</div>
+      <h2>Platform revenue, kept out of the welfare funds it serves</h2>
+      <p class="lede">Only Grok and GPT raised this among the six analyses; v2.0 of this document left the pricing model as an open question. It's now a stakeholder decision, resolved below.</p>
+
+      <p>The hard constraint, independently stated by two of the six analyses in near-identical language: <strong>platform billing must never touch, commingle with, or appear inside a tenant's own welfare-fund ledger.</strong> The SaaS operator invoicing "UDS Staff Welfare Association" for platform access is a transaction between the platform and that organisation as a customer — it has nothing to do with the GHS 15/month its members owe the welfare fund, and the two must be structurally incapable of being confused in the data model. Everything below operates inside that constraint.</p>
+
+      <h3><span class="id">18.1</span>Tier structure — decided</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tier</th><th>Who it's for</th><th>What's included</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Free Trial</strong></td><td>Every new tenant, automatically</td><td>Full feature set, time-boxed (e.g. 60 days) rather than permanently free — lowers onboarding friction without letting a tenant run indefinitely on the platform's infrastructure for nothing. Auto-prompts to convert as expiry approaches; data is never deleted on expiry, only new activity is paused until a plan is chosen.</td></tr>
+            <tr><td><strong>Starter</strong></td><td>Small, single-site groups (the St. Peter's/AGAOSAS shape)</td><td>Core modules only: contributions, benefits, claims, basic reporting. No AI assistant, no multi-chapter federation.</td></tr>
+            <tr><td><strong>Growth</strong></td><td>Mid-size, still single-site groups</td><td>Everything in Starter, plus the AI assistant (Section 17) and advanced reporting/forecasting.</td></tr>
+            <tr><td><strong>Enterprise</strong></td><td>Large and/or multi-campus organisations (the UDS/MoWH shape)</td><td>Everything in Growth, plus the <strong>Federation module</strong> — chapter/campus management screens, per-chapter imprest sub-funds, chapter-level reporting roll-ups (Section 7) — and an option for dedicated-schema data isolation (Section 21). Custom-negotiated pricing rather than a fixed rate, since the cost to serve varies enormously at this scale.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Tiers combine two dimensions deliberately — <strong>member count</strong> and <strong>feature access</strong> — rather than picking one. A tier isn't just "how many members," it's "how many members <em>and</em> which capabilities are unlocked," which is the standard shape for modern SaaS pricing and maps cleanly onto the real cost drivers: a 20-person alumni group costs almost nothing to serve; a 20,000-member federated university costs meaningfully more, in both infrastructure and support.</p>
+
+      <h3><span class="id">18.2</span>Billing cadence — configurable, not hardcoded</h3>
+      <p>Monthly, termly (aligning with school-year constitutions like St. Peter's), or annual — offered on every paid tier as a checkbox, not a fixed choice baked into the app. Annual prepayment carries a discount as the standard incentive. The actual prices for each tier and cadence live in a platform-operator settings screen, editable without a code deploy — the same "configuration, not hardcoding" discipline the welfare rules engine itself follows (Section 3.2), just applied to the platform's own pricing this time.</p>
+
+      <h3><span class="id">18.3</span>Per-transaction pricing — considered and rejected as the primary model</h3>
+      <p>Taking a cut of each contribution or payout was one of the three options originally on the table. It's rejected as the platform's core monetization lever: charging a percentage of the actual flow of welfare and bereavement money sits uncomfortably close to the wall this whole section exists to build, even with clean, separate ledgers — it ties platform revenue directly to the movement of members' money in a way flat subscription fees don't, and none of the four real-world constitutions studied have anything resembling it. If a transaction-based charge appears at all, it is restricted to a transparent pass-through of whatever fee the payment gateway itself charges — never a platform-added margin on top.</p>
+
+      <h3><span class="id">18.4</span>Multi-campus billing — bundled into Enterprise, not a separate axis</h3>
+      <p>Federation support (Section 7) is modelled in the data schema for every tenant, but its management screens and per-chapter fund isolation are feature-flagged and bundled into the Enterprise tier rather than priced as a standalone add-on. A university-scale organisation lands in Enterprise on member count anyway, so a fourth independent pricing dimension for "how many chapters" would add complexity without meaningfully changing what any real tenant pays.</p>
+
+      <ul>
+        <li>Lifecycle: trial → active → past-due → suspended → cancelled, with a configurable grace period before suspension.</li>
+        <li>Feature entitlements gate higher-tier capabilities without ever gating a tenant's access to its own historical financial data — even on a lapsed subscription, a tenant must be able to export its own ledger.</li>
+        <li>Platform-owner visibility into billing status across all tenants, without visibility into any tenant's welfare-fund contents unless separately and explicitly authorised for support purposes.</li>
+      </ul>
+
+      <div class="fr"><div class="frhead"><span class="frid">FR-SUB-01</span></div><p>The platform shall maintain subscription billing (plans, invoices, trials, dunning) in a data domain structurally separate from any tenant's welfare-fund ledger (Section 12).</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-SUB-02</span></div><p>A lapsed or suspended subscription shall never block a tenant's ability to export its own historical member and financial data.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-SUB-03</span></div><p>Feature entitlements shall be enforced at the application layer per subscription tier, without altering the underlying rule-engine schema a tenant has already configured.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-SUB-04</span></div><p>Tier definitions, prices, and billing cadences shall be editable by the platform operator through an admin screen, never hardcoded in application code.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-SUB-05</span></div><p>Any per-transaction charge shall be limited to a transparent pass-through of the payment gateway's own processing fee; the platform shall not levy its own percentage-based fee on tenant welfare-fund transactions.</p></div>
+      <div class="fr"><div class="frhead"><span class="frid">FR-SUB-06</span></div><p>The multi-chapter Federation module shall be a feature entitlement bundled into the Enterprise tier, gated the same way as any other tier feature, rather than billed on a separate per-chapter pricing axis.</p></div>
+    </section>
+
+    <!-- 19 -->
+    <section id="edgecases">
+      <div class="kicker"><span class="num">19</span>Edge cases</div>
+      <h2>The scenarios that break naive implementations</h2>
+      <p class="lede">None of the four real analyses catalogued these in depth; the GPT master-prompt's checklist did, extensively. Condensed here to the scenarios most likely to actually occur given the payment rails and approval chains already specified.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Scenario</th><th>Required behaviour</th></tr></thead>
+          <tbody>
+            <tr><td>Payment provider delivers the same success webhook twice</td><td>Idempotency key on the provider's transaction id; the second delivery is a no-op, never a double-post (FR-PAY-04).</td></tr>
+            <tr><td>Payment succeeds at the provider but the callback never arrives</td><td>A reconciliation job polls the provider's status API and posts the ledger entry once confirmed; the app never shows "successful" from an unconfirmed client-side state alone.</td></tr>
+            <tr><td>Member pays into the wrong contribution plan</td><td>Treasurer-only "reallocate" action posts a reversing entry on the wrong ledger line and a fresh entry on the correct one; the original posting is never edited in place.</td></tr>
+            <tr><td>Member resigns with an unused advance-payment balance</td><td>Exit settlement nets the prepaid credit against the configured refund percentage before payout; it is never silently forfeited.</td></tr>
+            <tr><td>Member dies while in arrears</td><td>The death-benefit claim and the arrears settlement are two independent journal entries; whether arrears are deducted from the payout or written off is a tenant-configurable rule, never hardcoded either way.</td></tr>
+            <tr><td>An approved claim's amount exceeds the relevant fund's current balance</td><td>Disbursement is blocked and escalated to the committee; a fund balance must never be allowed to go negative silently.</td></tr>
+            <tr><td>A contribution amount changes mid-period after a constitutional amendment</td><td>The new RuleVersion's <code>effective_from</code> governs; obligations already generated before that date are not retroactively rewritten (Section 11).</td></tr>
+            <tr><td>A claim is submitted the day before a member crosses into Defaulter status</td><td>Eligibility is evaluated against the status and rule version in force at submission time; a later status change doesn't retroactively invalidate an already-approved claim.</td></tr>
+            <tr><td>Two admins edit the same rule configuration concurrently</td><td>Optimistic locking with a conflict warning; the losing editor sees a diff and must re-apply — never a silent overwrite.</td></tr>
+            <tr><td>A newly registered dependant is named in a claim filed the same week</td><td>A tenant-configurable "dependant waiting period" (which may be zero) gates whether a newly added dependant is immediately claim-eligible.</td></tr>
+            <tr><td>Bulk member import contains duplicate national ID numbers</td><td>Import runs in dry-run mode, surfaces every duplicate/validation error as a report, and commits nothing until the admin approves the corrected batch.</td></tr>
+            <tr><td>The same national ID registers at two independent tenants</td><td>Allowed and expected — independent organisations are independent tenants; identities are never merged or cross-linked across tenants without a separate, explicit action.</td></tr>
+            <tr><td>A proposed rule amendment's governance vote fails or lapses</td><td>The proposed RuleVersion stays in draft/rejected state indefinitely; it never auto-activates on a timer.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 20 -->
+    <section id="stack">
+      <div class="kicker"><span class="num">20</span>Technology stack</div>
+      <h2>Recommended stack</h2>
+      <p class="lede">Optimised for a rule-engine-first product with strict financial-ledger integrity and a mobile-first, sometimes low-connectivity user base.</p>
+      <p>Nothing below was picked from abstract "industry best practice." Flutter, PostgreSQL, and shared-schema-with-row-level-security are here because all six independent AI analyses landed on them without seeing each other's work — the strongest evidence in Section 05's entire convergence map. A bespoke rule engine rather than a general BRMS reflects four of six explicitly rejecting the heavier option, on the grounds — visible directly in Section 4's comparative table — that the rule shapes across the four real constitutions are bounded and enumerable enough that a custom, auditable evaluator beats an opaque general-purpose one. Where the AI analyses didn't converge, the source constitutions' own implied non-functional requirements decided it instead: offline-tolerant mobile client because the university constitution describes a multi-campus, rural-connectivity context; idempotent payment processing because mobile money providers are known to double-deliver webhooks; regional aggregators over direct mobile-network integration because that's the actual payments landscape all four source organisations operate in.</p>
+      <p><strong>Backend framework — resolved.</strong> All six analyses named NestJS; they split on the second choice, and this document's earlier drafts left it as a genuine either/or against Django+DRF. It's now locked in as <strong>NestJS (TypeScript)</strong>, decided on the application's own technical demands rather than on precedent — this workspace happens to already run Django elsewhere, and that pragmatic argument was real, but it was deliberately set aside in favour of two properties that matter more for this specific product: end-to-end type-sharing between the rule engine, the API, and the Next.js admin console below (the rule <em>shape</em> staying identical everywhere it's used is close to the whole point of Section 11), and a request profile — payment webhooks, notification fan-out, reconciliation polling — that is I/O-heavy rather than compute-heavy, which is exactly what Node's async model is good at. Recorded formally in Section 23.1.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Layer</th><th>Recommendation</th><th>Rationale</th></tr></thead>
+          <tbody>
+            <tr><td>Mobile client</td><td>Flutter</td><td>Single codebase for iOS/Android with strong offline-cache story (Drift/SQLite), important given rural/campus connectivity noted in NFRs</td></tr>
+            <tr><td>API layer</td><td>NestJS (Node/TypeScript)</td><td>Decided over Django+DRF on technical fit rather than precedent — see the framework-choice callout above; the module/DI architecture maps directly onto the domain's own bounded modules (identity, tenancy, contributions, ledger, claims — Section 10)</td></tr>
+            <tr><td>Web admin console</td><td>Next.js (React/TypeScript)</td><td>Shares the rule-engine's TypeScript types directly with the NestJS API — a rule schema change is a compile-time error in the admin UI that reads it, not a silent drift discovered later; serves the Treasurer/committee-facing screens the mobile app isn't built for</td></tr>
+            <tr><td>Rule engine</td><td>Purpose-built evaluator over versioned JSON rule documents (Section 11), not a general BRMS</td><td>The rule shapes are bounded and enumerable (Section 4); a bespoke evaluator is auditable and testable in a way an opaque BRMS is not</td></tr>
+            <tr><td>Primary datastore</td><td>PostgreSQL, row-level security enabled</td><td>Strong transactional guarantees for the ledger; native RLS supports the tenant-isolation model in Section 21</td></tr>
+            <tr><td>Ledger/event store</td><td>Append-only event table + materialised balance views, or a dedicated ledger service (e.g. built on Postgres with strict append-only constraints)</td><td>Matches FR-LED-05's immutability requirement without adopting a full event-sourcing framework prematurely</td></tr>
+            <tr><td>Cache / queues</td><td>Redis + a durable queue (e.g. SQS/RabbitMQ)</td><td>Payment webhook processing, notification fan-out, and reconciliation jobs need durable async processing</td></tr>
+            <tr><td>Payments</td><td>Aggregator abstraction layer (Paystack/Flutterwave/Hubtel primary; provider-agnostic interface)</td><td>Avoids lock-in to a single MNO/PSP; West-Africa-first coverage</td></tr>
+            <tr><td>Search/reporting</td><td>Postgres materialised views for most reports; consider a read-replica or OLAP layer (e.g. ClickHouse) only once cross-tenant analytics volume justifies it</td><td>Avoid a second system of record before it is earned</td></tr>
+            <tr><td>Auth</td><td>OAuth2/OIDC-based identity, phone-number-first verification, WebAuthn/biometric for step-up on disbursement approval</td><td>Matches the region's phone-first identity pattern; step-up auth protects the highest-risk action (releasing money)</td></tr>
+            <tr><td>Infrastructure</td><td>Containerised services on a managed Kubernetes or equivalent PaaS, multi-AZ within a West-Africa-proximate region</td><td>Standard operational maturity path; multi-tenancy and autoscaling both benefit from container orchestration</td></tr>
+            <tr><td>Observability</td><td>Structured logs + tracing (OpenTelemetry) + tenant-scoped dashboards</td><td>Multi-tenant support requires being able to isolate "which tenant, which rule version, which transaction" quickly</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 21 -->
+    <section id="multitenancy">
+      <div class="kicker"><span class="num">21</span>Multi-tenancy decision</div>
+      <h2>Isolation model</h2>
+
+      <p><strong>Recommendation: shared database, shared schema, tenant_id on every row, enforced by PostgreSQL row-level security — with an escape hatch to dedicated schemas or databases for the small number of very large tenants.</strong> This is the one architectural decision all four independent analyses reached without prompting each other (Section 05, row 1) — the strongest consensus signal in this entire document.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Model</th><th>Fit for "thousands of small/medium groups"</th><th>Fit for "a handful of very large employers"</th></tr></thead>
+          <tbody>
+            <tr><td>Shared schema + tenant_id + RLS</td><td class="num"><span class="pill good">Strong</span> — low per-tenant operational overhead, cheap to provision</td><td class="num"><span class="pill warn">Adequate</span> with careful indexing/partitioning</td></tr>
+            <tr><td>Schema-per-tenant</td><td class="num"><span class="pill warn">Weak</span> — migration fan-out becomes unmanageable at thousands of tenants</td><td class="num"><span class="pill good">Strong</span> isolation, heavier ops cost</td></tr>
+            <tr><td>Database-per-tenant</td><td class="num"><span class="pill critical">Poor</span> — infeasible at this scale</td><td class="num"><span class="pill good">Strongest isolation</span>, justified only for regulatory-mandated separation</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Given the brief's own framing — "thousands of independent groups with varying sizes" — the shared-schema-with-RLS model is the only one that keeps provisioning cost near-zero for the long tail while still giving each tenant provable isolation. Table partitioning by <code>tenant_id</code> on the largest tables (transactions, notifications) preserves performance headroom as a handful of tenants grow large, without requiring a different architecture for them — they can later be migrated to a dedicated schema if genuinely warranted, as an operational exception rather than a day-one branch in the codebase.</p>
+    </section>
+
+    <!-- 22 -->
+    <section id="security">
+      <div class="kicker"><span class="num">22</span>Security &amp; compliance</div>
+      <h2>Controls</h2>
+      <ul>
+        <li><strong>Tenant isolation</strong>: PostgreSQL RLS policies keyed on session-scoped <code>tenant_id</code>; every query path (including background jobs) must set that session variable before touching tenant tables — enforced by an automated test that fails CI if any query path is found missing it.</li>
+        <li><strong>Financial approval integrity</strong>: disbursement instructions require the full configured approval chain to be satisfied server-side, re-validated at execution time (not just at UI submission time), closing the gap several source constitutions rely on human diligence to close (e.g. "Patron shall not withhold signature… unless compelling grounds" is a policy statement, not an enforced control, until the platform makes the chain a hard gate).</li>
+        <li><strong>PII handling</strong>: field-level encryption for national ID numbers, medical evidence, and next-of-kin contact details; access logged per FR-AUD-02.</li>
+        <li><strong>Payment data</strong>: PCI-DSS scope minimised via tokenisation through the aggregator; platform never stores raw card PAN/CVV.</li>
+        <li><strong>Data protection</strong>: Ghana Data Protection Act 2012 compliance (registration as a data controller, lawful-basis tracking for member data, subject-access support) as the baseline regime; architecture kept regime-agnostic for future markets.</li>
+        <li><strong>Auditor access</strong>: time-boxed, automatically revoked, read-only, export-logged.</li>
+        <li><strong>Rule-change integrity</strong>: amendments require the same governance approval the tenant configured; the platform itself cannot silently alter a live financial rule outside that workflow, including for platform-owner support staff (privileged emergency access, if ever required, is itself logged and requires dual control).</li>
+      </ul>
+
+      <h3><span class="id">22.1</span>Fraud &amp; anomaly signals</h3>
+      <p>None of the four real analyses built this out; it appears only in the GPT checklist. Included here as deterministic rules to run at write-time, not as a machine-learning model — the architecture should leave room for one later, but nothing below requires it on day one:</p>
+      <ul>
+        <li>Duplicate claims for the same benefit type and relationship within its occurrence cap.</li>
+        <li>A dependant added or changed shortly before a claim naming that dependant is filed.</li>
+        <li>A dormant, long-defaulting account suddenly clearing all arrears immediately before filing a claim (the Section 14.3 cooldown check).</li>
+        <li>An admin approving a transaction they themselves initiated, where the tenant has maker-checker enabled (Section 13.1).</li>
+        <li>Unusually frequent reversals or refunds against a single member or a single approver.</li>
+        <li>The same payment-instrument identity (mobile money number, card) funding multiple member accounts <em>outside</em> the declared proxy-payment flow (FR-PAY-05) — a proxy payment that explicitly names payer and beneficiary is expected and legitimate (a parent paying for their children, for instance); the same instrument quietly topping up accounts it never declares a relationship to is the actual signal.</li>
+      </ul>
+    </section>
+
+    <!-- 23 -->
+    <section id="risks">
+      <div class="kicker"><span class="num">23</span>Assumptions, risks &amp; open questions</div>
+      <h2>What still needs a decision</h2>
+
+      <h3><span class="id">23.1</span>Decisions taken since v2.0</h3>
+      <p>Four of the questions v2.0 left open have since been resolved by the stakeholder and are recorded here rather than left implicit in a chat transcript.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Question</th><th>Decision</th><th>Where it lives now</th></tr></thead>
+          <tbody>
+            <tr><td>Double-entry accounting on day one?</td><td>Core primitives (chart of accounts, journal entries, immutability, wallet-as-liability) are in initial scope; advanced modules (investment tracking, budgeting, imprest automation) are deferred to Phase 2. Rationale: retrofitting double-entry onto a live system already holding real money is riskier than building the correct primitive from the start.</td><td>Section 12, Section 8.5</td></tr>
+            <tr><td>Subscription pricing model?</td><td>Time-boxed free trial + tiered (member-count × feature) paid plans — Starter / Growth / Enterprise — configurable cadence (monthly/termly/annual), operator-editable pricing. Per-transaction pricing rejected as a primary model to avoid tying platform revenue to the flow of welfare money.</td><td>Section 18</td></tr>
+            <tr><td>Multi-campus federation, v1 or v2?</td><td>Data modelled from day one (unchanged from v2.0); the chapter-management UI is feature-flagged into the Enterprise tier rather than billed as a separate axis.</td><td>Section 7, Section 18.4</td></tr>
+            <tr><td>Member wallet scope?</td><td>One-directional: top-up and apply-to-obligation only. No cash withdrawal, no member-to-member transfer — deliberately staying clear of e-money/mobile-money-issuer licensing territory.</td><td>Section 8.5 (FR-LED-07/08)</td></tr>
+            <tr><td>NestJS or Django+DRF for the backend?</td><td>NestJS (TypeScript), decided on the application's own technical demands — end-to-end type-sharing with the Next.js admin console for the rule engine, and an I/O-heavy webhook/notification workload that suits Node's async model — deliberately chosen over this workspace's existing Django precedent rather than defaulting to it.</td><td>Section 20</td></tr>
+            <tr><td>What builds the admin web console?</td><td>Next.js (React/TypeScript), previously unspecified. Pairs with the NestJS decision above by sharing rule-engine types across the API and the screens that configure it.</td><td>Section 20</td></tr>
+            <tr><td>Minimum viable payments footprint for launch?</td><td>Mobile money plus card as the default for every pilot; payroll-file ingestion added only when the specific pilot organisation is itself employer-linked, rather than built speculatively on a fixed date. This was already the shape implied by the Phase 1 roadmap (Section 24.2) — recorded here explicitly rather than left as an unresolved question next to a table that already answers it.</td><td>Section 8.8, Section 24.2</td></tr>
+            <tr><td>Which jurisdictions in scope for the first 12 months?</td><td>Ghana only. All four source constitutions and the Section 22 compliance baseline (Ghana Data Protection Act 2012) are Ghana-specific; the architecture stays regime-agnostic so a second jurisdiction is a Phase 3 configuration exercise, not a rewrite, but it is explicitly out of scope for year one.</td><td>Section 22</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout risk">
+        <div class="ctitle">Risk — discretionary clauses resist full automation</div>
+        <p>Several source clauses are explicitly discretionary ("EC shall determine severity in consultation with…", "a lump sum or a material gift of value" for UDS retirement). The rule engine can gate and route these to human approval but cannot compute them. Product decision needed: how far the UI pushes committees toward structured bands (Section 8.6, FR-CLM-05) versus leaving genuinely open-ended discretion.</p>
+      </div>
+
+      <div class="callout risk">
+        <div class="ctitle">Risk — payroll-linked collection depends on employer cooperation</div>
+        <p>Three of four source organisations rely on salary deduction at source, which the app cannot compel — it can only ingest and reconcile whatever file the employer's payroll system produces. Onboarding for employer-linked tenants therefore has an external dependency (HR/payroll integration or manual file exchange) outside the platform's control.</p>
+      </div>
+
+      <div class="callout risk">
+        <div class="ctitle">Risk — self-registration abuse</div>
+        <p>Open self-registration (for voluntary associations without a payroll gate) is a vector for fake accounts designed purely to farm benefit payouts. Mitigate with admin-approval gating, phone-number verification, and the consistency-score/cooldown mechanisms in Section 14 applied from day one of membership, not only after a first default.</p>
+      </div>
+
+      <h3><span class="id">23.2</span>Still open</h3>
+      <p>None of the items below block starting Phase 0 or Phase 1. The first two are minor onboarding-flow scope calls that can be settled during Phase 1 build itself; the remaining three sit inside modules already deferred to Phase 2 (elections, disbursement authorization, the wallet — Section 24.2) and simply don't need an answer until that phase starts.</p>
+      <ol>
+        <li>Is a constitution-document upload (for reference/audit) a v1 requirement, or can it follow the wizard-only flow initially?</li>
+        <li>Should the Ambiguity &amp; Conflict Register (Section 4.5) be a one-time onboarding step, or a standing feature admins can re-run whenever they upload an amended constitution?</li>
+        <li>What's the right default for live-tally voting (Section 8.13, FR-ELC-05) — hidden-until-close platform-wide with an opt-in to reveal, or the reverse? The spec defaults to hidden-until-close, but this is a cultural call each tenant's own governance body may want to override differently than the platform default assumes.</li>
+        <li>What's a sensible default N-of-M for Disbursement Authorization (Section 12.5) when a tenant hasn't configured its own — 2-of-3, matching the Chairman/Treasurer/Patron pattern common across all four source constitutions?</li>
+        <li>Does the member-wallet design (Section 8.5, FR-LED-07/08) need formal legal sign-off before launch, given how close "stored value in an app" sits to e-money regulation even with withdrawal disabled? Recommend a compliance review rather than relying on this document's own reasoning.</li>
+      </ol>
+    </section>
+
+    <!-- 24 -->
+    <section id="roadmap">
+      <div class="kicker"><span class="num">24</span>Implementation roadmap &amp; MVP scope</div>
+      <h2>Everything above is the whole system. This is what to build first.</h2>
+      <p class="lede">Sections 1–23 describe what the platform must eventually be able to do. None of them say what to build in week one versus month six. Every one of the six source AI analyses included a phased roadmap; this consolidation hadn't, until now.</p>
+
+      <h3><span class="id">24.1</span>One principle before the table: primitive now, feature later</h3>
+      <p>The same reasoning already used for the ledger (Section 12 — build full double-entry from day one because retrofitting it onto a system already holding real money is worse than the extra build time) applies to two other places below: the Account/Membership split (Section 7) and the ledger's liability-account type that a member wallet will eventually sit on top of. In both cases, the underlying <em>data model</em> is built correctly in Phase 1 even though the user-facing <em>feature</em> on top of it — a polished multi-group switcher, an actual top-up-able wallet screen — doesn't ship until Phase 2. Getting the shape of the data right once is cheap; migrating live financial or identity data later is not.</p>
+
+      <h3><span class="id">24.2</span>Phase 1 — MVP</h3>
+      <p>Target: <strong>one real pilot organisation live end-to-end</strong> — members registered, dues flowing in by mobile money, at least one real claim submitted, approved, and paid out, with correct double-entry ledger entries the entire way through. That's the exit criterion for calling Phase 1 done, not a calendar date.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Module</th><th>In Phase 1</th><th>Deferred</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>Multi-tenancy &amp; security (§21, §22)</td><td>Everything</td><td>—</td><td>Foundational; retrofitting isolation or security later is far riskier than deferring any feature</td></tr>
+            <tr><td>Tenant onboarding (§8.1)</td><td>Self-registration, wizard, passive document attach, go-live summary (FR-ONB-01/02/03/05)</td><td>Template cloning, AI ambiguity detection (FR-ONB-04/06)</td><td>Cloning needs a second tenant to clone from; ambiguity detection depends on the AI extraction that's itself deferred</td></tr>
+            <tr><td>Membership (§8.2, §7.2)</td><td>Full lifecycle, dependants, the Account/Membership <em>data model</em> split, registration flow</td><td>Polished multi-group switcher UX</td><td>Build the identity/membership split correctly now — most Phase 1 tenants only have one membership, but the architecture is wrong later if it isn't there from the start</td></tr>
+            <tr><td>Governance (§8.3)</td><td>Governance bodies, term limits, role vacancy handling</td><td>Motions/resolutions/voting infrastructure, vote of no confidence</td><td>Officers can be recorded administratively at first; full governance workflow isn't on the path to proving the contribution/benefit loop</td></tr>
+            <tr><td>Rule engine (§8.4, §11)</td><td>Everything</td><td>Rule simulator/sandbox (§11.4)</td><td>The engine can't be deferred; the sandbox is an admin confidence tool, not required to run rules</td></tr>
+            <tr><td>Ledger (§8.5, §12)</td><td>Chart of accounts, journal entries, immutability, allocation policies, grace-period taxonomy, the wallet's liability-account <em>data model</em></td><td>Disbursement Authorization + income/expense module (§12.5), the wallet's user-facing top-up feature, investment/budget/imprest</td><td>Ledger correctness is non-negotiable from day one; org-expense tracking and the wallet UI can follow once the core member-contribution loop is proven</td></tr>
+            <tr><td>Claims (§8.6)</td><td>Submission, evidence upload, a simple 1–2 stage approval chain, fixed-amount benefits</td><td>Discretionary graded bands (FR-CLM-05), full sequential/parallel/threshold routing (FR-CLM-06)</td><td>Start with the simplest approval shape every source constitution actually uses; add routing sophistication once a real committee needs it</td></tr>
+            <tr><td>Defaulter/anti-abuse (§8.7, §14)</td><td>Threshold-based status transitions, oldest-arrears-first allocation (FR-DEF-01/02)</td><td>Consistency score, dumping-pattern cooldown flagging, proportional payout (FR-DEF-03/04, §14.3/14.4)</td><td>A binary good-standing test is enough to prove the loop; nuanced scoring is worth tuning against real payment behaviour data the pilot will generate</td></tr>
+            <tr><td>Payments (§8.8, §15)</td><td>Mobile money, card, bank transfer, disbursement, reconciliation (FR-PAY-01/03/04)</td><td>Payroll-deduction ingestion unless the pilot is employer-linked; proxy payment; wallet-funded payment (FR-PAY-02/05/06)</td><td>Payroll depends entirely on an external employer's cooperation — sequence it around whichever pilot actually needs it, not a fixed date</td></tr>
+            <tr><td>Reporting (§8.9, §16)</td><td>Contribution summary, member statement, defaulter register, disbursement report</td><td>Forecasting/solvency, income/expense registers, wallet statement</td><td>The essentials a treasurer needs weekly; the advisory reports need enough live data to be useful anyway</td></tr>
+            <tr><td>RBAC (§8.10, §13)</td><td>Core permission model, a handful of starter role templates, maker-checker toggle</td><td>Full custom role-builder UI</td><td>A tenant can start from templates; building bespoke permission combinations is a power-user feature</td></tr>
+            <tr><td>Notifications (§8.11)</td><td>Due reminders, claim-status updates (FR-COM-01/02)</td><td>Formal notice/read-receipt tracking for meetings (FR-COM-03)</td><td>—</td></tr>
+            <tr><td>Audit (§8.12)</td><td>Everything</td><td>—</td><td>Non-negotiable from day one — exactly the kind of thing that can't be honestly backfilled</td></tr>
+            <tr><td>Elections (§8.13)</td><td>—</td><td>Everything</td><td>Officers recorded administratively at first; the vote/tally machinery isn't on the path to proving the core loop</td></tr>
+            <tr><td>AI (§17)</td><td>—</td><td>Everything</td><td>A genuine differentiator with zero risk to defer — the rule engine works identically with or without it</td></tr>
+            <tr><td>Subscription billing (§18)</td><td>Free trial + one flat paid tier, operator-editable pricing table</td><td>Full Starter/Growth/Enterprise matrix, Federation bundling</td><td>Same underlying architecture either way — Phase 1 just offers fewer choices on top of it</td></tr>
+            <tr><td>Multi-campus federation (§7, §18.4)</td><td>Data model only</td><td>UI, imprest sub-funds, escalation SLAs</td><td>Explicitly tenant-triggered, not calendar-triggered — build it when the first Enterprise tenant actually needs it</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3><span class="id">24.3</span>Timeline</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Phase</th><th>Focus</th><th>Rough duration</th><th>Exit criterion</th></tr></thead>
+          <tbody>
+            <tr><td>Phase 0</td><td>Technical foundation: repo, CI/CD, environments, DB schema, API scaffold, payment-provider sandbox keys, an RLS proof-of-concept</td><td>2–4 weeks</td><td>An empty tenant can be created and proven isolated end-to-end in a test environment</td></tr>
+            <tr><td>Phase 1 (MVP)</td><td>Everything marked "In Phase 1" above</td><td>3–4 months</td><td>One real pilot organisation live end-to-end, per Section 24.2</td></tr>
+            <tr><td>Phase 1.5</td><td>Pilot feedback loop</td><td>2–4 weeks</td><td>Gaps the pilot surfaced that this document couldn't anticipate on paper are fixed</td></tr>
+            <tr><td>Phase 2</td><td>AI capabilities, the wallet feature, Disbursement Authorization + expense tracking, elections, advanced anti-abuse, the full subscription tier matrix, advanced reporting</td><td>4–6 months</td><td>A second and third tenant onboard without developer involvement</td></tr>
+            <tr><td>Phase 3</td><td>Federation UI, investment/budget/imprest, multi-currency/language, a dedicated workflow engine if genuinely warranted (Section 05 kept this deferred, not cancelled)</td><td>Ongoing, tenant-triggered</td><td>First Enterprise-tier tenant fully onboarded</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout risk">
+        <div class="ctitle">This isn't a promise, it's a sequencing tool</div>
+        <p>Phase boundaries here are meant to be argued with. If the actual first pilot organisation is employer-linked, payroll ingestion probably belongs in Phase 1, not Phase 2 — the table above gives the reasoning, not a fixed verdict, precisely so it can flex around whichever real organisation ends up first through the door.</p>
+      </div>
+    </section>
+
+    <!-- 25 -->
+    <section id="appendix">
+      <div class="kicker"><span class="num">25</span>Appendices</div>
+      <h2>Reference material</h2>
+
+      <h3><span class="id">A</span>Glossary</h3>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr><td style="width:220px"><strong>Good standing</strong></td><td>A member's status when contribution obligations are current per the tenant's DefaulterPolicy.</td></tr>
+            <tr><td><strong>Dumping</strong></td><td>The abuse pattern of contributing only opportunistically, around a benefit event, rather than consistently.</td></tr>
+            <tr><td><strong>Convener</strong></td><td>A chapter-level representative who verifies and escalates claims to the parent organisation (UDS precedent).</td></tr>
+            <tr><td><strong>Imprest</strong></td><td>A ring-fenced float advanced to a chapter/convener for local welfare expenditure, reported back to the treasury.</td></tr>
+            <tr><td><strong>Rule version</strong></td><td>An effective-dated, immutable snapshot of a financial or eligibility rule, superseded rather than overwritten by amendments.</td></tr>
+            <tr><td><strong>Outdooring</strong></td><td>A traditional naming/presentation ceremony for a newborn, recognised as a benefit-triggering event in two of the four source constitutions.</td></tr>
+            <tr><td><strong>Double-entry / journal entry</strong></td><td>Every financial event posts two or more balanced debit/credit lines across a chart of accounts, rather than a single flat transaction row (Section 12).</td></tr>
+            <tr><td><strong>Maker-checker</strong></td><td>A control preventing the person who initiates a financial action from also being its sole approver (Section 13.1).</td></tr>
+            <tr><td><strong>Convergence map</strong></td><td>The cross-analysis agreement/divergence table (Section 05) used to decide which design choices in this document are high-confidence versus flagged for stakeholder confirmation.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3><span class="id">B</span>Source-to-requirement traceability</h3>
+      <p class="small">Every functional requirement in Section 8 and every rule pattern in Section 11 is traceable to at least one clause in the four source documents analysed in Section 4; the full clause-level mapping is maintained as a living appendix outside this document (spreadsheet form) as the rule catalogue grows with each new tenant onboarded, since — per AGAOSAS's own evidence — real constitutions keep changing after they're written.</p>
+
+      <h3><span class="id">C</span>Source constitutions analysed</h3>
+      <ul>
+        <li>UDS Staff Welfare Association — Welfare Policy</li>
+        <li>St. Peter's Staff Welfare Association — Constitution</li>
+        <li>Ministry of Works and Housing Staff Welfare Association — Constitution (2018)</li>
+        <li>AGAOSAS (Agona SDA SHS Old Students Association) — The Approved Constitution</li>
+      </ul>
+
+      <h3><span class="id">D</span>AI analyses consolidated into this document</h3>
+      <ul>
+        <li>This document, v1.0 (Claude / Sonnet 5) — full independent analysis, primary structural basis</li>
+        <li>"Claude — web version" — full independent analysis (3 of 4 constitutions)</li>
+        <li>DeepSeek — full independent analysis</li>
+        <li>Grok — full independent analysis</li>
+        <li>Gemini — full independent SRS/architecture analysis, including a concrete JSON rule schema and RBAC permission matrix</li>
+        <li>GPT — full independent analysis presented as a 95-part extended master prompt; contributed the obligation/payment distinction, the event-date/claim-date/rule-effective-date split, the Ambiguity &amp; Conflict Register concept, and the "Programmable Welfare Finance Engine" pipeline framing (§11.1)</li>
+      </ul>
+    </section>
+
+  </main>
+
+  <footer>
+    <span>WELF-PRD-001 · v2.1 decisions locked</span>
+    <span>v2.1 · 6 independent AI analyses + stakeholder decisions on billing, accounting scope, and federation</span>
+  </footer>
+
+</div>

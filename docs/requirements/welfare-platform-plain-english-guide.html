@@ -1,0 +1,422 @@
+<title>Understanding the Welfare Platform — A Plain-English Guide</title>
+<style>
+:root{
+  --paper:#F5F6F2;
+  --surface:#FFFFFF;
+  --surface-2:#EFF1EA;
+  --ink:#1A241E;
+  --ink-soft:#4C584F;
+  --ink-faint:#7C877D;
+  --line:#DCDFD3;
+  --line-strong:#C4C9B8;
+  --accent:#0E6B57;
+  --accent-soft:#DCEEE7;
+  --gold:#9C7018;
+  --gold-soft:#F1E6CC;
+  --warn:#B4791A;
+  --warn-soft:#F6E8D2;
+  --critical:#A6362B;
+  --critical-soft:#F6E1DE;
+  --shadow: 0 1px 2px rgba(20,30,20,0.06), 0 8px 24px rgba(20,30,20,0.05);
+  --font-display: "Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --font-body: Optima,Candara,"Noto Sans","Segoe UI",system-ui,-apple-system,sans-serif;
+  --font-mono: "SF Mono","Cascadia Code",Consolas,"Roboto Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#10140F; --surface:#161C16; --surface-2:#1B2219;
+    --ink:#E7ECE3; --ink-soft:#AEB8A8; --ink-faint:#7C8B7A;
+    --line:#2B3327; --line-strong:#3A4536;
+    --accent:#3FCB9F; --accent-soft:#173028;
+    --gold:#D8A63C; --gold-soft:#2E2617;
+    --warn:#D9A13B; --warn-soft:#302510;
+    --critical:#E36B5C; --critical-soft:#301714;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#10140F; --surface:#161C16; --surface-2:#1B2219;
+  --ink:#E7ECE3; --ink-soft:#AEB8A8; --ink-faint:#7C8B7A;
+  --line:#2B3327; --line-strong:#3A4536;
+  --accent:#3FCB9F; --accent-soft:#173028;
+  --gold:#D8A63C; --gold-soft:#2E2617;
+  --warn:#D9A13B; --warn-soft:#302510;
+  --critical:#E36B5C; --critical-soft:#301714;
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{ background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased; }
+::selection{ background:var(--accent-soft); }
+a{ color:var(--accent); text-decoration:none; border-bottom:1px solid var(--accent-soft); }
+a:hover{ border-bottom-color:var(--accent); }
+h1,h2,h3{ font-family:var(--font-display); font-weight:600; text-wrap:balance; color:var(--ink); }
+p{ text-wrap:pretty; }
+
+.wrap{ max-width:760px; margin:0 auto; padding:0 28px 100px; }
+
+.cover{ padding:56px 0 32px; border-bottom:1px solid var(--line); margin-bottom:36px; }
+.cover-eyebrow{ font-family:var(--font-mono); font-size:12.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:10px; margin-bottom:20px; }
+.cover-eyebrow .dot{ width:6px;height:6px;border-radius:50%;background:var(--accent); }
+.cover h1{ font-size:clamp(30px,5vw,44px); line-height:1.12; margin:0 0 16px; max-width:19ch; }
+.cover .subtitle{ font-size:19px; color:var(--ink-soft); max-width:52ch; margin:0; }
+.tag{ display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:3px 9px; border-radius:20px; background:var(--gold-soft); color:var(--gold); border:1px solid color-mix(in srgb, var(--gold) 35%, transparent); margin-top:20px; }
+
+.toc{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:22px 26px; margin-bottom:48px; box-shadow:var(--shadow); }
+.toc-title{ font-family:var(--font-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:12px; }
+.toc ol{ margin:0; padding-left:22px; columns:1; }
+.toc li{ margin-bottom:6px; font-size:15px; }
+.toc a{ border-bottom:none; }
+
+section{ margin-bottom:56px; scroll-margin-top:24px; }
+.kicker{ font-family:var(--font-mono); font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin-bottom:10px; }
+section > h2{ font-size:27px; margin:0 0 18px; }
+h3{ font-size:19px; margin:30px 0 10px; }
+p{ margin:0 0 16px; }
+ul,ol{ padding-left:22px; margin:0 0 16px; }
+li{ margin-bottom:8px; }
+strong{ color:var(--ink); }
+
+.lede{ font-size:19px; color:var(--ink-soft); margin-bottom:8px; }
+
+.analogy{
+  border-left:3px solid var(--accent); background:var(--accent-soft);
+  border-radius:0 10px 10px 0; padding:16px 20px; margin:20px 0; box-shadow:var(--shadow);
+}
+.analogy .label{ font-family:var(--font-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); margin-bottom:6px; display:block; }
+.analogy p{ margin:0; color:var(--ink); }
+
+.callout{ border-radius:10px; padding:18px 22px; margin:22px 0; border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); }
+.callout .ctitle{ font-family:var(--font-mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; margin-bottom:8px; }
+.callout.warn{ border-color:color-mix(in srgb, var(--warn) 35%, var(--line)); background:var(--warn-soft); }
+.callout.warn .ctitle{ color:var(--warn); }
+.callout.critical{ border-color:color-mix(in srgb, var(--critical) 35%, var(--line)); background:var(--critical-soft); }
+.callout.critical .ctitle{ color:var(--critical); }
+.callout p:last-child{ margin-bottom:0; }
+
+.translate{
+  display:grid; grid-template-columns:1fr 1fr; gap:0;
+  border:1px solid var(--line); border-radius:10px; overflow:hidden; margin:20px 0; box-shadow:var(--shadow);
+}
+.translate > div{ padding:14px 18px; background:var(--surface); }
+.translate > div:first-child{ background:var(--surface-2); border-right:1px solid var(--line); }
+.translate .h{ font-family:var(--font-mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); display:block; margin-bottom:4px; }
+.translate .term{ font-weight:700; color:var(--ink); }
+.translate .plain{ color:var(--ink-soft); font-size:15px; }
+@media (max-width:600px){ .translate{ grid-template-columns:1fr; } .translate > div:first-child{ border-right:none; border-bottom:1px solid var(--line); } }
+
+.tldr{
+  font-family:var(--font-mono); font-size:12px; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--gold); background:var(--gold-soft); display:inline-block; padding:4px 10px; border-radius:6px; margin-bottom:10px;
+}
+
+.glossary dt{ font-weight:700; color:var(--ink); margin-top:14px; }
+.glossary dd{ margin:4px 0 0; color:var(--ink-soft); }
+
+hr.rule{ border:none; border-top:1px dashed var(--line-strong); margin:36px 0; }
+
+footer{ border-top:1px solid var(--line); padding-top:22px; margin-top:20px; color:var(--ink-faint); font-size:12.5px; font-family:var(--font-mono); }
+</style>
+
+<div class="wrap">
+
+  <div class="cover">
+    <div class="cover-eyebrow"><span class="dot"></span>Plain-English Companion</div>
+    <h1>What this welfare platform actually is, explained like you've never seen the spec</h1>
+    <p class="subtitle">A walk-through of WELF-PRD-001 v2.1 for anyone who wants to understand the project without reading 24 sections of requirements language. No background assumed.</p>
+    <span class="tag">companion to the full spec</span>
+  </div>
+
+  <div class="toc">
+    <div class="toc-title">In this guide</div>
+    <ol>
+      <li><a href="#pitch">The one-paragraph version</a></li>
+      <li><a href="#problem">The actual problem, in human terms</a></li>
+      <li><a href="#voting">Why six AI teams, and what their "votes" mean</a></li>
+      <li><a href="#tenancy">One app, many tenants, invisible walls</a></li>
+      <li><a href="#rules">Rules are data, not code</a></li>
+      <li><a href="#ledger">Why we're tracking money like an accountant</a></li>
+      <li><a href="#rbac">Who's allowed to do what</a></li>
+      <li><a href="#abuse">Stopping people from gaming the system</a></li>
+      <li><a href="#ai">What the AI is (and isn't) allowed to do</a></li>
+      <li><a href="#money">Keeping the shop's rent separate from the till</a></li>
+      <li><a href="#joining">What actually happens when you join a group</a></li>
+      <li><a href="#switching">Belonging to more than one group at once</a></li>
+      <li><a href="#resolutions">Voting on more than just who's in charge</a></li>
+      <li><a href="#wallet">A wallet you can top up, but not empty out</a></li>
+      <li><a href="#proxy">Paying for someone else</a></li>
+      <li><a href="#signatures">Two signatures before the group's money moves</a></li>
+      <li><a href="#roadmap">What gets built first</a></li>
+      <li><a href="#decided">Decisions that have now been made</a></li>
+      <li><a href="#open">What's still an open question</a></li>
+      <li><a href="#glossary">A short glossary</a></li>
+    </ol>
+  </div>
+
+  <section id="pitch">
+    <div class="kicker">The big idea</div>
+    <h2>The one-paragraph version</h2>
+    <p class="lede">Thousands of small associations — staff welfare groups, alumni unions, church groups, civil-service welfare schemes — all do roughly the same thing: members pay dues, and the group pays out money when something happens (a birth, a death, a wedding, an illness). We want one mobile app that any of them can download, set up themselves, and run — without a programmer ever having to touch the code again just because a new group's rules are different.</p>
+    <p>That last part is the whole trick. Every one of these groups has its own "constitution" — a handwritten or typed rulebook saying how much people pay, when they qualify for help, and how much they get. If we build the app around <em>one</em> group's rulebook, it breaks the moment a second group with different rules signs up. So the entire platform is built around one core discipline: <strong>every number, every waiting period, every payout amount lives in a settings screen, not in the program's source code.</strong></p>
+  </section>
+
+  <section id="problem">
+    <div class="kicker">Why this is genuinely hard</div>
+    <h2>The actual problem, in human terms</h2>
+    <p>To make sure we weren't just guessing at what "different rules" means, we looked at four real rulebooks from four very different organisations:</p>
+    <ul>
+      <li>A <strong>university's</strong> staff welfare association, spread across four campuses, with a Board of Trustees, a Management Team, and two committees.</li>
+      <li>A <strong>private school's</strong> staff association, small and single-site, run by five elected officers.</li>
+      <li>A <strong>government ministry's</strong> welfare scheme, with formal annual audits and a strict paper trail.</li>
+      <li>An <strong>alumni association</strong> of a graduating class, run entirely by volunteers with no employer involved at all.</li>
+    </ul>
+    <p>Every single one of them pays a different amount, on a different schedule, into a different set of benefits, with different waiting periods and different penalties for falling behind. Here's a small taste, translated out of formal language:</p>
+    <div class="translate">
+      <div><span class="h">One group's rule</span><span class="term">Pay GHS 15 every month, straight out of your salary.</span></div>
+      <div><span class="h">Another group's rule</span><span class="term">Pay GHS 100 once a year, plus GHS 20–50 whenever something happens to someone.</span></div>
+    </div>
+    <div class="translate">
+      <div><span class="h">One group's rule</span><span class="term">Wait 6 months after joining before you can claim anything.</span></div>
+      <div><span class="h">Another group's rule</span><span class="term">Wait 3 months, and if you ever leave and come back, you serve the waiting period all over again — plus an apology if you left on bad terms.</span></div>
+    </div>
+    <p>And it's not just numbers. One group pays a benefit <em>to a member's family</em> when the member dies. Another treats a member's own death as something the member's estate is compensated for directly. Those aren't the same rule with a different price tag — they're structurally different ideas about who gets paid. A rulebook that hardcodes "death benefit goes to the family" would simply be wrong for the second group.</p>
+    <div class="analogy">
+      <span class="label">Think of it like...</span>
+      <p>...building one tax-filing app for every country in the world, instead of one country. You wouldn't hardcode "income tax is 20%" into the software — you'd build a settings screen where each country's tax authority fills in its own rates, brackets, and deadlines. This platform is that same idea, applied to welfare-fund rulebooks instead of tax law.</p>
+    </div>
+  </section>
+
+  <section id="voting">
+    <div class="kicker">How we stress-tested our own thinking</div>
+    <h2>Why six AI teams, and what their "votes" mean</h2>
+    <p>Rather than trust one pass at this design, the same brief and the same four rulebooks were handed to six different AI systems, working independently — none of them could see what the others were doing. Then all six write-ups were compared side by side.</p>
+    <p>The logic is simple: if six independently-working teams all land on the same answer without talking to each other, that's a strong sign the answer is actually right, not just a guess one of them happened to make. If they land on <em>different</em> answers, that tells us the question is genuinely open, and a human needs to make the call rather than have it slip through unnoticed.</p>
+    <div class="translate">
+      <div><span class="h">Everyone agreed on this</span><span class="term">All six independently said: keep every group's data in shared infrastructure, but wall it off so strictly that one group can never see another's members or money, no matter what.</span></div>
+      <div><span class="h">What that means for you</span><span class="plain">This is now treated as settled — no further debate needed. It's in the full spec as a "high confidence" decision.</span></div>
+    </div>
+    <div class="translate">
+      <div><span class="h">Everyone agreed something was needed, but disagreed on how</span><span class="term">All six agreed you need a way to stop people from ignoring dues for months and then suddenly paying everything back right before they want a payout — but each proposed a different specific mechanism.</span></div>
+      <div><span class="h">What that means for you</span><span class="plain">We combined all of their ideas into one layered system rather than picking a winner (Section 8 of this guide).</span></div>
+    </div>
+    <p>Two decisions actually got <em>stronger</em> once we compared notes: keeping proper double-entry books (like a real accountant, not a checklist) turned out to have three of the six independently insisting on it, not just one. And keeping the app's own subscription fees completely separate from members' welfare money turned out to be something two totally separate teams stated in almost identical words, unprompted.</p>
+  </section>
+
+  <section id="tenancy">
+    <div class="kicker">The foundation</div>
+    <h2>One app, many tenants, invisible walls</h2>
+    <div class="analogy">
+      <span class="label">Think of it like...</span>
+      <p>...an apartment building. Every organisation gets its own "apartment" — its own members, its own money, its own rules. They all live in the same building (the same app, the same servers), which keeps the landlord's costs down and means a new tenant can move in without anyone building them a new house from scratch. But no tenant can see into another tenant's apartment, and there's no master key that accidentally opens two doors at once.</p>
+    </div>
+    <p>In the spec's language, this is called <strong>multi-tenancy</strong>, and the specific approach — shared database, strict digital walls enforced by the database itself rather than just by the app's good behaviour — is the single most agreed-upon decision in the whole document. It also has an escape hatch: if one organisation grows huge (think: a university with tens of thousands of staff), it can be moved into its own private wing of the building without redesigning anything.</p>
+  </section>
+
+  <section id="rules">
+    <div class="kicker">The core trick</div>
+    <h2>Rules are data, not code</h2>
+    <p>This is the idea the whole project stands on, so it's worth spelling out slowly.</p>
+    <p>A lazy way to build this app would be to write, in the program itself: <em>"if this member's organisation is the university, charge GHS 15 a month."</em> That works for exactly one organisation. The moment a second one signs up with a different amount, someone has to open the program's source code, add another line, test it, and re-release the app. Do that for a thousand organisations and you have a thousand special cases nobody can safely change ever again.</p>
+    <p>Instead, every number a group might want to change — the monthly due, the waiting period, the payout for a birth, the penalty for missing three payments — lives in a settings table the group's own administrator fills in through the app itself, the same way you'd fill in a form. The program that reads those settings and does the math is generic: it doesn't know or care whether it's calculating a university's birth benefit or an alumni group's wedding gift. It just reads whatever numbers that organisation put in its own settings and applies them.</p>
+    <div class="analogy">
+      <span class="label">Think of it like...</span>
+      <p>...a mail-merge template versus writing a thousand individual letters by hand. The template has blanks for name, amount, and date; you fill in different values for different people, and the same template produces a correctly personalised letter every time. Nobody rewrites the template just because a new person's name is different.</p>
+    </div>
+    <p>One wrinkle worth knowing about: organisations amend their own rulebooks over time — a monthly due goes from GHS 20 to GHS 30, say. The system has to remember <em>both</em> figures: the old one, for anything that happened before the change, and the new one, going forward. Otherwise a member who died last year under the old rules would suddenly, on paper, seem to have been owed money under rules that didn't exist yet when they died. Every rule, in other words, comes with a "since when" date attached, and old versions are never deleted — only replaced going forward.</p>
+  </section>
+
+  <section id="ledger">
+    <div class="kicker">Handling real money responsibly</div>
+    <h2>Why we're tracking money like an accountant, not like a checklist</h2>
+    <p>The tempting, simple way to track payments is a single table: <em>Member, Amount, Paid? (yes/no)</em>. It looks fine until something goes wrong — a payment gets refunded, a benefit gets reversed, an admin made a typo — and now you're editing history instead of correcting it, and nobody can reconstruct what the books actually said on any given day in the past.</p>
+    <p>Three of the six independent teams insisted on something closer to how a real accountant keeps books: <strong>double-entry bookkeeping</strong>. Every cedi that moves is written down twice — once as coming <em>from</em> somewhere, once as going <em>to</em> somewhere — and the two sides always have to balance. Once a record is written, it's never edited or deleted. If a mistake happens, you don't erase it; you add a new, clearly-labelled correcting entry that cancels it out, the same way an accountant would draw a line through an error rather than use correction fluid.</p>
+    <div class="translate">
+      <div><span class="h">The naive version</span><span class="term">"Kofi paid GHS 20." One row. If it's wrong, someone edits the row.</span></div>
+      <div><span class="h">The accountant's version</span><span class="term">"GHS 20 moved out of Kofi's obligation and into the Funeral Fund's cash account." Two sides, always balanced, never edited — only corrected with a new, linked entry.</span></div>
+    </div>
+    <p>This matters more than it sounds like it should, because welfare associations get audited — sometimes by their own members, sometimes by an external auditor within a strict deadline. An auditor's first question is usually "prove this," and a system that can only show the current total, with no trail of how it got there, can't prove anything.</p>
+    <p>One more distinction worth knowing: the system separates <strong>"what was owed"</strong> from <strong>"what was actually paid."</strong> If someone was supposed to pay GHS 50 in January and only pays it in June, the system needs to remember it was late — not quietly relabel it as an on-time January payment just because the money eventually arrived. That memory is what makes it possible to catch people who deliberately let their dues slide and then pay everything back right before they want to make a claim (more on that in the next section).</p>
+  </section>
+
+  <section id="rbac">
+    <div class="kicker">Who can touch what</div>
+    <h2>Who's allowed to do what</h2>
+    <div class="analogy">
+      <span class="label">Think of it like...</span>
+      <p>...a nightclub with different wristbands. The bouncer at the door doesn't decide who gets which wristband on the fly — the club owner decided in advance who gets VIP access, who can go backstage, and who's general admission only. Each welfare group is its own "club" and gets to hand out its own wristbands however its own constitution says to, rather than the app forcing every group to use the same fixed job titles.</p>
+    </div>
+    <p>In practice this means a group doesn't get a hardcoded list of roles like "Treasurer" and "Secretary" baked into the app. Instead, each organisation builds its own roles out of individual permissions — "can approve a claim," "can see financial reports," "can change the monthly due amount" — and decides for itself who gets which combination. A tiny alumni group might give one person almost everything; a government ministry's welfare scheme, which has committees and audit rules, will want much finer separation.</p>
+    <p>One safeguard worth calling out by name: several of the AI teams, and most of the real rulebooks, independently insisted that <strong>the person who starts a financial action shouldn't also be the only person who approves it.</strong> If a treasurer records a payment reversal, someone else — not the treasurer — should be the one who signs off on it. This is a very old idea in accounting (it's called "maker-checker" or "segregation of duties") and it's one of the few places the app can enforce good behaviour rather than just hoping people follow the rules.</p>
+  </section>
+
+  <section id="abuse">
+    <div class="kicker">The free-rider problem</div>
+    <h2>Stopping people from gaming the system</h2>
+    <p>Every mutual-aid scheme has the same vulnerability: someone stops paying dues for months, has nothing to show for their membership — and then, the moment they actually need help (a funeral, a hospital bill), suddenly pays everything they owe in one lump sum and expects a payout as if they'd been a model member all along. The associations call this "dumping." It's the single biggest fairness risk in the whole system, because if it's not stopped, the honest members who paid every month are effectively subsidising the people who only show up when they need something.</p>
+    <p>The platform fights this with several layers working together, rather than one blunt rule:</p>
+    <ul>
+      <li><strong>A consistency score, not just a yes/no flag.</strong> The system remembers a member's whole payment history — not just "are they currently paid up" but "how consistently have they paid since joining" — so someone with a spotless record and one bad month looks very different from someone who's paid twice in three years.</li>
+      <li><strong>A cooling-off period after catching up.</strong> If someone clears months of missed payments all at once, any claim they file shortly afterward gets automatically flagged for a human committee to look at closely — not rejected outright, but not quietly approved either.</li>
+      <li><strong>Losing the "first time" perks if you've already claimed before.</strong> Several rulebooks give a better exit refund to someone who's <em>never</em> received a benefit than to someone who has — the system tracks that permanently, the way an insurance no-claims discount works in reverse.</li>
+      <li><strong>Real deadlines for advance notice.</strong> Some benefits (like a wedding gift) require the group to be told in advance — the system timestamps the request the moment it comes in, so nobody can quietly claim they gave two weeks' notice after the fact.</li>
+    </ul>
+    <p>None of this is about being harsh — every one of the four real rulebooks we studied has some version of a grace period, because life happens and people fall behind for good reasons. The goal is just to make sure the system can tell the difference between "fell behind and is catching up honestly" and "only ever pays when there's a payout to collect."</p>
+  </section>
+
+  <section id="ai">
+    <div class="kicker">Where artificial intelligence fits — and where it doesn't</div>
+    <h2>What the AI is (and isn't) allowed to do</h2>
+    <p>There are two places AI genuinely helps here, and one hard line it's never allowed to cross.</p>
+    <ul>
+      <li><strong>Reading a new group's rulebook for them.</strong> When a new organisation signs up, instead of an administrator manually typing every dollar amount and waiting period into a settings screen, they can upload their actual constitution document and the system will propose a first draft of the configuration — "it looks like your monthly due is GHS 20, your waiting period is 3 months, here's a draft benefit list." A human still has to look at every line and approve it before anything goes live. Nothing the AI reads out of a document becomes a real, active rule on its own.</li>
+      <li><strong>Answering members' everyday questions.</strong> "How much do I owe?" "Am I eligible for the funeral benefit?" "Why was my claim rejected?" — a member-facing assistant can answer these honestly and specifically, because it's only allowed to look at that member's own real data and that organisation's actual current rules. It never guesses, and it never sees another member's information.</li>
+    </ul>
+    <div class="callout critical">
+      <div class="ctitle">The line that never gets crossed</div>
+      <p>No AI system in this platform is ever allowed to approve a claim, release a payment, change a financial rule, or alter anything in the ledger. It can draft, suggest, flag, and explain — but the actual decision to move money always has to come from a human being who's accountable for it. This isn't a technical limitation; it's a deliberate design rule, because the money involved is real and belongs to real people.</p>
+    </div>
+  </section>
+
+  <section id="money">
+    <div class="kicker">Two pots of money that must never mix</div>
+    <h2>Keeping the shop's rent separate from the till</h2>
+    <div class="analogy">
+      <span class="label">Think of it like...</span>
+      <p>...a landlord and a tenant's cash register. The company that runs this app is like a landlord: it might charge each welfare association a subscription fee to use the software, the same way Netflix charges a monthly fee. That subscription money belongs to the company running the platform. It has absolutely nothing to do with the welfare fund itself — the actual dues members pay in, and the payouts the association makes to its own members. Those are two completely separate pots of money, run by two completely different parties, and the app is built so they can never accidentally touch.</p>
+    </div>
+    <p>This sounds obvious, but it's easy to get wrong by accident if the software isn't designed carefully — for instance, if "money coming into the platform" were treated as one big undifferentiated stream. Two of the six independent AI teams flagged this exact risk, unprompted, using almost identical language, which is part of why it's treated as a firm requirement rather than a nice-to-have.</p>
+  </section>
+
+  <section id="joining">
+    <div class="kicker">From nothing to a full member</div>
+    <h2>What actually happens when you join a group</h2>
+    <p>Two slightly different stories, depending on whether this is your very first welfare group or your second.</p>
+    <p><strong>The first time.</strong> Someone invites you — a link, a QR code, or your employer adding you from a staff list. You verify your phone number once, which creates your one login for the whole app. You fill in your details and, importantly, list who your dependants are (spouse, children, parents) <em>before</em> anything happens to them — because a bereavement payout later gets checked against names that were already on file, not names added the week of the funeral. The group's own waiting period then starts counting down before you're eligible for anything.</p>
+    <p><strong>The second time — joining a different group.</strong> You already have a login, so there's no re-verifying your phone number — you just add a new membership to the same account, the same way described in the next section. The app offers to copy over the dependants you already listed for your first group, to save you retyping everything — but it makes you confirm each one again before it counts, because different groups have different ideas about who qualifies as a "recognised" spouse or child. Nothing is silently assumed to be true just because it was true somewhere else.</p>
+  </section>
+
+  <section id="switching">
+    <div class="kicker">One person, several memberships</div>
+    <h2>Belonging to more than one group at once</h2>
+    <p>In real life, people belong to several of these groups at the same time — the same person might be in their university's staff welfare scheme <em>and</em> their old school's alumni association <em>and</em> a hometown welfare group. Each of those has to stay completely separate: what you owe one group, and what you're eligible for there, must never leak into another.</p>
+    <div class="analogy">
+      <span class="label">Think of it like...</span>
+      <p>...one Google account that belongs to several different Workspaces — your personal Gmail, your employer's Workspace, a volunteer group's Workspace. It's still one login, but each Workspace only sees what's inside it. Switching between them is one tap; nothing about one bleeds into another.</p>
+    </div>
+    <p>This platform works the same way: one phone number and login gets you into the app once, and then a simple switcher lets you move between whichever welfare groups you belong to. Whichever group is currently active is always shown clearly on screen, so you never accidentally check the wrong group's balance or pay dues into the wrong pot.</p>
+  </section>
+
+  <section id="resolutions">
+    <div class="kicker">Beyond electing officers</div>
+    <h2>Voting on more than just who's in charge</h2>
+    <p>Every group already needed a way to elect its own Chairman, Treasurer, and Secretary. But groups also vote on things that aren't about a person at all — "should we raise the monthly due to GHS 30?", "should we approve this amended constitution?", "should we make an exception for this member's claim?" The platform treats these as the same underlying idea: a vote is a vote, whether the thing being decided is a candidate or a proposal.</p>
+    <p>One extra wrinkle worth knowing: whether the running tally is visible <em>while</em> voting is happening, or only revealed once voting closes, is left as a choice each group makes for itself — some committees want the transparency of watching the count live; others worry that seeing early results changes how people vote (the same reason many real elections don't announce results until polls close everywhere). The platform defaults to hiding the count until close, but any governance body can switch that on for its own votes.</p>
+  </section>
+
+  <section id="wallet">
+    <div class="kicker">A middle ground between "pay per due" and "cash in the app"</div>
+    <h2>A wallet you can top up, but not empty out</h2>
+    <p>Members can put money into a personal balance inside the app — a wallet — and then draw on it whenever a due or a levy comes up, instead of having to make a separate payment every single time. Think of it like topping up a store gift card: money goes in once, and gets used gradually.</p>
+    <div class="callout warn">
+      <div class="ctitle">One deliberate limit</div>
+      <p>You can put money in, and you can spend it on your own dues and levies. You <strong>cannot</strong> take it back out as cash, and you cannot send it to another member. That's not an oversight — it's the line that keeps this a tool for managing an association's own dues, rather than turning into something closer to a mobile-money account, which would drag the whole platform into a much heavier set of financial regulations (in Ghana, that's the Bank of Ghana's rules for companies that hold and move electronic money on people's behalf). Keeping the wallet one-directional — in, and only out via your own dues — keeps things simple and keeps the platform squarely a piece of software, not a financial institution.</p>
+    </div>
+  </section>
+
+  <section id="proxy">
+    <div class="kicker">When you can't pay right now, but someone else can</div>
+    <h2>Paying for someone else</h2>
+    <p>Sometimes the person who owes the money isn't the person who can pay it — a daughter covering her elderly father's monthly due, a friend helping out someone who's temporarily out of mobile money credit. The app lets anyone pay toward another member's due directly: pick the person, pay as usual, and the payment settles <em>their</em> obligation while the charge comes out of <em>your</em> phone or card.</p>
+    <div class="translate">
+      <div><span class="h">Without this feature</span><span class="term">The person struggling to pay just... doesn't pay, and starts sliding toward defaulter status, even though someone nearby was willing and able to help.</span></div>
+      <div><span class="h">With this feature</span><span class="term">The payment is recorded honestly on both sides — the payer's own history correctly shows it wasn't their own due, and the recipient's history shows "settled, paid by [name]" — nobody's records get confusing or misleading.</span></div>
+    </div>
+    <p>That honest record-keeping matters for another reason too: without it, the system might wrongly flag "the same phone number paying for several different people" as suspicious (Section 22.1 of the full spec lists exactly this as a fraud signal). Because a proxy payment always names both people clearly, the system can tell the difference between a parent legitimately paying for their children and someone quietly running several unrelated accounts off one phone.</p>
+  </section>
+
+  <section id="signatures">
+    <div class="kicker">Spending the group's own money responsibly</div>
+    <h2>Two signatures before the group's money moves</h2>
+    <p>Paying out a member's funeral benefit is one kind of transaction — it goes through the claims process described earlier. But a welfare group also spends money on things that have nothing to do with a member's claim: paying for the AGM venue, buying stationery, moving savings into an investment. Every one of the four real rulebooks studied requires more than one named officer to sign off before money like this leaves the bank account — usually the Chairman, the Treasurer, and sometimes a third person like the Patron.</p>
+    <p>The app enforces that same rule digitally: an officer can start ("initiate") this kind of payment, but it won't actually go out until the required number of other officers — however many the group decides it wants, not a number baked into the app — have each confirmed it. Every expense, and every donation or grant the group receives, gets logged the same careful way the member dues are: what it was for, which fund it came from or went to, and a receipt attached.</p>
+  </section>
+
+  <section id="roadmap">
+    <div class="kicker">Not everything at once</div>
+    <h2>What gets built first</h2>
+    <p>Everything explained so far is what the finished platform can do. None of it needs to exist on day one of building it — trying to build all of it at once is how projects like this stall out and never ship anything a real group can use.</p>
+    <p>The plan: get one real welfare group fully working end to end first — members joining, dues coming in by mobile money, a real claim submitted and paid out correctly — before building anything else. Concretely, that first version includes the core of almost everything already described (joining, contributions, claims, basic reporting, who's-allowed-to-do-what), but leaves out the more advanced pieces for a fast-follow: the AI assistant, the member wallet's actual top-up screen, the group-spending signatures feature, electing officers digitally, and the full pricing menu all come slightly later, once that first group is genuinely up and running.</p>
+    <div class="analogy">
+      <span class="label">Think of it like...</span>
+      <p>...opening a restaurant with a smaller, well-executed menu before adding the full one. Getting a few dishes completely right and serving real customers teaches you far more than a sprawling menu nobody's actually eaten from yet.</p>
+    </div>
+  </section>
+
+  <section id="decided">
+    <div class="kicker">Following up on the questions you answered</div>
+    <h2>Decisions that have now been made</h2>
+    <p>An earlier version of this guide left four things as open questions for you to weigh in on. Here's where each one landed:</p>
+    <ul>
+      <li><strong>How "properly" should the accounting be, on day one?</strong> — <strong>Decided:</strong> build the core of proper double-entry bookkeeping (Section 12 of the full spec) from the start, but hold off on the fancier accounting features (tracking investments, budgets, petty cash) until a later release. The reasoning: fixing the books to be "properly" correct after the app is already holding real people's money is far riskier than building it right the first time.</li>
+      <li><strong>How should the app charge organisations to use it?</strong> — <strong>Decided:</strong> a free trial that expires after a set time (not a permanent free tier), then paid plans that combine "how many members" with "which features" — a small single-site group pays less and gets the basics; a large or multi-campus organisation pays more and unlocks more. Payment can be monthly, per-term, or annual, and the group chooses. Taking a cut of every single payment was considered and turned down — it sits too close to the "never touch the welfare money" rule from the previous section.</li>
+      <li><strong>Do we support multi-campus organisations from day one?</strong> — <strong>Decided:</strong> the underlying design already supports it, but the actual screens for managing several campuses only switch on for organisations paying for the top-tier plan — which a university-sized group would be on anyway, just by virtue of having so many members.</li>
+      <li><strong>How far should a member's wallet go?</strong> — <strong>Decided:</strong> in only, applied to dues only, as explained above — no cash-out, no sending money to other members.</li>
+    </ul>
+  </section>
+
+  <section id="open">
+    <div class="kicker">Honesty about what isn't decided yet</div>
+    <h2>What's still an open question</h2>
+    <p>A few things genuinely still need a human — probably you — to make a call:</p>
+    <ul>
+      <li><strong>Mobile money only at launch, or payroll deductions too?</strong> Three of the four real rulebooks rely on salary deductions, which depend on cooperation from an outside employer's payroll system — that's a dependency the app itself can't control.</li>
+      <li><strong>Should uploading the actual constitution document be a day-one feature, or can groups start with just the settings wizard?</strong></li>
+      <li><strong>Which countries beyond Ghana are we building for in the first year?</strong> That changes which data-protection and financial rules apply.</li>
+      <li><strong>Should the default number of required signatures for spending money (two signatures? three?) be fixed, or left blank until each group sets its own?</strong> The rulebooks studied lean toward three (Chairman, Treasurer, and a third officer), but that's not universal.</li>
+      <li><strong>Does the member wallet need a lawyer to look at it before launch?</strong> Even with cash-out and transfers switched off, "money sitting in an app" is close enough to financial-services territory that a proper legal review is worth doing rather than relying on this guide's own reasoning.</li>
+    </ul>
+    <p>If you read nothing else in this guide, read this: a document that claims everything is settled is usually hiding its real decisions, not avoiding them. This one tries not to.</p>
+  </section>
+
+  <section id="glossary">
+    <div class="kicker">Quick reference</div>
+    <h2>A short glossary</h2>
+    <dl class="glossary">
+      <dt>Tenant</dt>
+      <dd>One organisation using the app — its own "apartment" in the building. Not a person; an entire welfare association is one tenant.</dd>
+      <dt>Multi-tenancy</dt>
+      <dd>The building itself: one piece of software serving many separate organisations, each walled off from the others.</dd>
+      <dt>Rule engine</dt>
+      <dd>The part of the app that reads an organisation's own settings (its "rules") and applies them, instead of having those rules hardwired into the program.</dd>
+      <dt>Rule version / effective date</dt>
+      <dd>When a group changes a rule, the old version is kept, not deleted, tagged with the date it stopped applying — so anything that happened under the old rule is judged fairly, by the rule that was actually in force at the time.</dd>
+      <dt>Double-entry ledger</dt>
+      <dd>An accountant's way of recording money: every movement is written down on two sides that must balance, and nothing already recorded is ever edited — only corrected with a new entry.</dd>
+      <dt>Obligation vs. payment</dt>
+      <dd>What a member <em>owed</em> for a given month, versus what they <em>actually paid</em> — kept as two separate facts so a late payment can't quietly be relabelled as on-time.</dd>
+      <dt>RBAC (role-based access control)</dt>
+      <dd>The wristband system: who's allowed to do what inside the app, decided by each organisation for itself.</dd>
+      <dt>Maker-checker / segregation of duties</dt>
+      <dd>The rule that whoever starts a financial action shouldn't be the same person who approves it.</dd>
+      <dt>Anti-dumping</dt>
+      <dd>The set of guardrails that stop someone from ignoring dues for months and then paying everything back right before claiming a benefit.</dd>
+      <dt>Good standing</dt>
+      <dd>Whether a member is currently up to date enough on their dues to be eligible for benefits, under that organisation's own rules.</dd>
+      <dt>Account vs. Membership</dt>
+      <dd>Your login (Account) is one thing; your relationship with a particular welfare group (Membership) is another. One Account can hold several Memberships, switchable in-app, without mixing up money or eligibility between groups.</dd>
+      <dt>Wallet</dt>
+      <dd>A top-up-only balance a member can draw on for their own dues — money can go in and be spent on obligations, but never be withdrawn as cash or sent to another member.</dd>
+      <dt>Proxy payment</dt>
+      <dd>Paying toward someone else's due directly — the charge hits the payer's phone or card, but the payment settles the named recipient's obligation, with both people's records staying clearly and honestly attributed.</dd>
+      <dt>Disbursement Authorization</dt>
+      <dd>The digital version of requiring two or three named officers to jointly sign off before the group's money moves for a non-benefit expense (rent, procurement, an investment) — separate from the claims-approval process a member benefit goes through.</dd>
+      <dt>Resolution vote</dt>
+      <dd>A vote on a proposal rather than a person — "raise the due to GHS 30," for instance — using the same voting mechanism as an officer election.</dd>
+    </dl>
+  </section>
+
+  <footer>
+    <div>Companion to WELF-PRD-001 v2.1 · translated from the full technical specification</div>
+  </footer>
+
+</div>
