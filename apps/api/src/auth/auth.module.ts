@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { RbacModule } from '../rbac/rbac.module';
+import { SubscriptionCoreModule } from '../subscriptions/subscription-core.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -18,6 +19,7 @@ if (!jwtSecret) {
       signOptions: { expiresIn: '1d' },
     }),
     RbacModule,
+    SubscriptionCoreModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard],

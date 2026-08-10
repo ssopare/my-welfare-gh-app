@@ -10,10 +10,12 @@ import { LedgerModule } from './ledger/ledger.module';
 import { MembershipModule } from './membership/membership.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
+import { PlatformAuthModule } from './platform-auth/platform-auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RoleModule } from './rbac/role.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { RuleEngineModule } from './rule-engine/rule-engine.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { RuleEngineModule } from './rule-engine/rule-engine.module';
     ReportingModule,
     GovernanceModule,
     NotificationsModule,
+    PlatformAuthModule,
+    SubscriptionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

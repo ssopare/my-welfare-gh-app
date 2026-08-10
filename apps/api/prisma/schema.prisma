@@ -69,6 +69,7 @@ model Organisation {
   defaulterPolicy          DefaulterPolicy?
   governanceBodies         GovernanceBody[]
   notifications            Notification[]
+  subscription             Subscription?
 
   @@map("organisations")
 }
@@ -797,6 +798,7 @@ enum NotificationType {
   DEFAULTER_RISK_ALERT
   CLAIM_STAGE_ENTERED
   CLAIM_STATUS_CHANGED
+  SUBSCRIPTION_LAPSED
 }
 
 // sourceType/sourceId are what makes NotificationService.notifyInTx
@@ -819,4 +821,94 @@ model Notification {
   @@index([organisationId])
   @@index([memberId])
   @@map("notifications")
+}
+
+// §18, roadmap: Subscription billing, Phase 1 scope only per the roadmap
+// table — free trial + one flat paid tier, operator-editable pricing
+// table. The full Starter/Growth/Enterprise matrix and Federation-tier
+// bundling (FR-SUB-06) are Phase 2, once more than one paid tier exists.
+//
+// A wholly new kind of actor, deliberately not an Account/Member: the
+// platform *operator* (the SaaS company running this for many welfare
+// associations) is not a member of any tenant, the same way Account
+// itself is "deliberately NOT tenant-scoped" (see that model's comment) —
+// just one level further out. No RLS on this table: it isn't tenant data
+// at all, so there's no tenant_id to isolate on, the same reasoning
+// Account gets no RLS policy. Provisioned by a one-off script
+// (scripts/create-platform-operator.ts), never a self-service HTTP
+// endpoint — there's no "first admin" bootstrap problem to solve here,
+// just ops access.
+model PlatformOperator {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  @@map("platform_operators")
+}
+
+// FR-SUB-04: "editable by the platform operator through an admin screen,
+// never hardcoded in application code." Not tenant-scoped — one shared
+// catalogue every tenant picks from — so no RLS here either.
+// billingCadence is free-form per §18.2 ("monthly, termly, or annual...
+// not a fixed choice baked into the app"). archived (not deleted) once a
+// plan is retired, so existing Subscriptions can keep referencing it —
+// same "never delete, only supersede" reasoning as everywhere else rules
+// are versioned in this app.
+model SubscriptionPlan {
+  id             String   @id @default(uuid())
+  name           String
+  priceAmount    Decimal  @db.Decimal(12, 2)
+  currency       String
+  billingCadence String
+  trialDays      Int      @default(60)
+  archived       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  subscriptions Subscription[]
+
+  @@map("subscription_plans")
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+// FR-SUB-01: "structurally separate from any tenant's welfare-fund
+// ledger" — no relation anywhere on this model to Fund/JournalEntry/
+// LedgerAccount/Obligation, by design, so platform revenue can never be
+// confused with or touch a tenant's own welfare funds. Every new
+// Organisation gets one of these automatically at registration
+// (§18.1's "Free Trial: every new tenant, automatically"), planId null
+// until they actually convert — trialDays lives on SubscriptionPlan, but
+// a trial starts before any plan is chosen, so trialEndsAt is computed
+// from a platform-wide default at creation, not read from a plan that
+// might not exist yet.
+//
+// RLS here is deliberately double: the ordinary tenant_isolation policy
+// (a tenant's own admin reads/manages their own subscription the normal
+// way, via withTenant) *and* an independent platform-operator policy
+// (SubscriptionGuard/SubscriptionService's cross-tenant management,
+// via withPlatformOperatorContext) — same "Postgres ORs multiple
+// permissive policies together" shape as own_memberships/
+// system_scheduler_read.
+model Subscription {
+  id               String             @id @default(uuid())
+  organisationId   String             @unique
+  planId           String?
+  status           SubscriptionStatus @default(TRIAL)
+  trialEndsAt      DateTime
+  gracePeriodDays  Int                @default(14)
+  currentPeriodEnd DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime           @default(now())
+
+  organisation Organisation      @relation(fields: [organisationId], references: [id])
+  plan         SubscriptionPlan? @relation(fields: [planId], references: [id])
+
+  @@map("subscriptions")
 }

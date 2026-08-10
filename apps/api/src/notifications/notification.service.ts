@@ -9,7 +9,8 @@ type NotificationTypeValue =
   | 'CONTRIBUTION_DUE_REMINDER'
   | 'DEFAULTER_RISK_ALERT'
   | 'CLAIM_STAGE_ENTERED'
-  | 'CLAIM_STATUS_CHANGED';
+  | 'CLAIM_STATUS_CHANGED'
+  | 'SUBSCRIPTION_LAPSED';
 
 // §8.11, FR-COM-01/02, Phase 1 scope only. No SMS/push/email provider
 // exists for this project (unlike Payments, nothing in the roadmap names

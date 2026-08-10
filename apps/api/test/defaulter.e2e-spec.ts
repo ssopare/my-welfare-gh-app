@@ -107,6 +107,9 @@ describe('Defaulter/anti-abuse (e2e)', () => {
         tx.member.deleteMany({ where: { organisationId } }),
       );
       await prisma.withTenant(organisationId, (tx) =>
+        tx.subscription.deleteMany({ where: { organisationId } }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
         tx.organisation.delete({ where: { id: organisationId } }),
       );
     }

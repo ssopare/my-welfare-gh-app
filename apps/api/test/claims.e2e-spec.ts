@@ -125,6 +125,9 @@ describe('Claims (e2e)', () => {
         tx.chapter.deleteMany({ where: { organisationId } }),
       );
       await prisma.withTenant(organisationId, (tx) =>
+        tx.subscription.deleteMany({ where: { organisationId } }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
         tx.organisation.delete({ where: { id: organisationId } }),
       );
     }

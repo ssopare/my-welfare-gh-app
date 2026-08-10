@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
+import { SubscriptionService } from '../subscriptions/subscription.service';
 import { JoinOrganisationDto } from './dto/join-organisation.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterOrganisationDto } from './dto/register-organisation.dto';
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly rbac: RbacService,
+    private readonly subscriptions: SubscriptionService,
   ) {}
 
   async registerOrganisation(dto: RegisterOrganisationDto) {
@@ -90,6 +92,9 @@ export class AuthService {
         created.id,
         orgAdminRoleId,
       );
+
+      // §18.1: "Free Trial: every new tenant, automatically."
+      await this.subscriptions.createTrialInTx(tx, organisation.id);
 
       return created;
     });

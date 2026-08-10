@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '../../generated/prisma/client';
 import { DefaulterService } from '../defaulter/defaulter.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RbacService } from '../rbac/rbac.service';
 import { NotificationService } from './notification.service';
 
 const OPEN_OBLIGATION_STATUSES = [
@@ -44,6 +45,7 @@ export class NotificationSchedulerService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationService,
     private readonly defaulter: DefaulterService,
+    private readonly rbac: RbacService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_6AM)
@@ -61,6 +63,7 @@ export class NotificationSchedulerService {
       await this.prisma.withTenant(organisationId, async (tx) => {
         await this.sendDueReminders(tx, organisationId);
         await this.reassessAndAlertDefaulters(tx, organisationId);
+        await this.expireLapsedTrial(tx, organisationId);
       });
     } catch (error) {
       // One tenant's bad data (or a transient failure) must never stop the
@@ -160,6 +163,49 @@ export class NotificationSchedulerService {
           );
         }
       }
+    }
+  }
+
+  // §18.1: a trial that runs out without converting doesn't just sit
+  // there forever — "auto-prompts to convert as expiry approaches" is the
+  // notify half of that; this is the enforcement half, formally moving
+  // the stored status to SUSPENDED rather than leaving every reader to
+  // recompute "is this trial actually still valid" from trialEndsAt
+  // itself (SubscriptionGuard does that recomputation too, at request
+  // time, so a lapsed trial is blocked immediately even before this daily
+  // sweep gets to it — this just makes the stored status catch up to
+  // reality for anything that reads it directly, like the platform
+  // operator's dashboard).
+  private async expireLapsedTrial(
+    tx: Prisma.TransactionClient,
+    organisationId: string,
+  ) {
+    const subscription = await tx.subscription.findUnique({
+      where: { organisationId },
+    });
+    if (!subscription) return;
+    if (subscription.status !== 'TRIAL') return;
+    if (subscription.trialEndsAt > new Date()) return;
+
+    await tx.subscription.update({
+      where: { organisationId },
+      data: { status: 'SUSPENDED' },
+    });
+
+    const adminIds = await this.rbac.listMembersWithPermissionInTx(
+      tx,
+      '*',
+      '*',
+    );
+    for (const memberId of adminIds) {
+      await this.notifications.notifyInTx(
+        tx,
+        organisationId,
+        memberId,
+        'SUBSCRIPTION_LAPSED',
+        'Your free trial has ended. Choose a subscription plan to resume full access — your existing data is safe and remains exportable.',
+        { sourceType: 'subscription', sourceId: subscription.id },
+      );
     }
   }
 }

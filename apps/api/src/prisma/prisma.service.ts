@@ -87,6 +87,28 @@ export class PrismaService
   }
 
   /**
+   * Runs `fn` with `app.system_context` set to `'platform_operator'` — the
+   * `platform_operator_access` RLS policy on subscriptions reads it,
+   * letting SubscriptionService's cross-tenant billing management
+   * (changing any organisation's subscription status, regardless of which
+   * tenant it belongs to) work at all. Unlike withSystemContext()
+   * (scheduler-only, never HTTP-reachable), this *is* called from HTTP
+   * endpoints — but only ones behind PlatformAuthGuard, which is the real
+   * boundary here: only a request carrying a valid PlatformOperator JWT
+   * ever reaches code that calls this. A tenant Member's JWT (checked by
+   * the ordinary JwtAuthGuard) can never satisfy PlatformAuthGuard, so it
+   * can never trigger this path.
+   */
+  async withPlatformOperatorContext<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.system_context', 'platform_operator', true)`;
+      return fn(tx);
+    });
+  }
+
+  /**
    * Tenant onboarding (§8.1): creates a brand-new Organisation. The id is
    * generated here, client-side, specifically so it can be passed to
    * withTenant() *before* the row exists — the organisations RLS policy
