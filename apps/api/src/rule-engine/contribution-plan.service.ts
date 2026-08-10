@@ -37,6 +37,7 @@ export class ContributionPlanService {
           paymentGracePeriodDays: dto.paymentGracePeriodDays,
           reinstatementWaitingPeriodMonths:
             dto.reinstatementWaitingPeriodMonths,
+          reminderDaysBeforeDue: dto.reminderDaysBeforeDue,
           supersedesId: dto.supersedesId,
           createdBy: actor.memberId,
         },

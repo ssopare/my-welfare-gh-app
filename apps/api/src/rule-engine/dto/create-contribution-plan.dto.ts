@@ -67,6 +67,13 @@ export class CreateContributionPlanDto {
   @Min(0)
   reinstatementWaitingPeriodMonths?: number;
 
+  // FR-COM-01: unset means no due-date reminder is ever sent for this
+  // plan — see the schema comment on ContributionPlan.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  reminderDaysBeforeDue?: number;
+
   @IsOptional()
   @IsUUID()
   chapterId?: string;

@@ -68,6 +68,7 @@ model Organisation {
   claims                   Claim[]
   defaulterPolicy          DefaulterPolicy?
   governanceBodies         GovernanceBody[]
+  notifications            Notification[]
 
   @@map("organisations")
 }
@@ -150,6 +151,7 @@ model Member {
   paymentIntents  PaymentIntent[]
   roleAssignments RoleAssignment[]
   claims          Claim[]
+  notifications   Notification[]
 
   @@index([organisationId])
   @@index([accountId])
@@ -227,6 +229,11 @@ model ContributionPlan {
   joiningGracePeriodDays           Int?
   paymentGracePeriodDays           Int?
   reinstatementWaitingPeriodMonths Int?
+  // FR-COM-01: "configurable reminders ahead of a contribution due date."
+  // Unset (the default) means no reminder — opt-in per plan, same reasoning
+  // as DefaulterPolicy/makerCheckerEnabled. Read by
+  // NotificationSchedulerService's daily sweep, not evaluated anywhere else.
+  reminderDaysBeforeDue            Int?
   minTenureMonths                  Int?
   goodStandingRequired             Boolean    @default(true)
   status                           RuleStatus @default(DRAFT)
@@ -776,4 +783,40 @@ model DefaulterPolicy {
   organisation Organisation @relation(fields: [organisationId], references: [id])
 
   @@map("defaulter_policies")
+}
+
+// §8.11, FR-COM-01/02, Phase 1 scope only per the roadmap table (formal
+// notice/read-receipt tracking for meetings, FR-COM-03, is Phase 2). No
+// SMS/push/email provider account exists for this project — unlike
+// Payments, nothing in the roadmap names a specific one to eventually
+// integrate — so this is a real, durable in-app inbox (queryable,
+// mark-as-read), not a dispatch-to-an-external-channel system. A future
+// SMS/push channel would consume these same rows rather than replace them.
+enum NotificationType {
+  CONTRIBUTION_DUE_REMINDER
+  DEFAULTER_RISK_ALERT
+  CLAIM_STAGE_ENTERED
+  CLAIM_STATUS_CHANGED
+}
+
+// sourceType/sourceId are what makes NotificationService.notifyInTx
+// idempotent — e.g. "already reminded about obligation X" — a lightweight,
+// un-enforced pointer, same reasoning as JournalEntry.sourceType/sourceId.
+model Notification {
+  id             String           @id @default(uuid())
+  organisationId String
+  memberId       String
+  type           NotificationType
+  message        String
+  sourceType     String?
+  sourceId       String?
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+  member       Member       @relation(fields: [memberId], references: [id])
+
+  @@index([organisationId])
+  @@index([memberId])
+  @@map("notifications")
 }

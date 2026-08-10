@@ -68,6 +68,25 @@ export class PrismaService
   }
 
   /**
+   * Runs `fn` with the Postgres session variable `app.system_context` set
+   * to `'scheduler'` — the `system_scheduler_read` RLS policy on
+   * organisations reads it, letting a genuinely cross-tenant process (only
+   * NotificationSchedulerService's periodic sweep, so far) enumerate every
+   * tenant before doing its real per-tenant work through the normal
+   * withTenant() for everything else. Never call this from any
+   * HTTP-reachable code path — nothing user-facing can set this session
+   * variable, which is what makes it safe to exist at all.
+   */
+  async withSystemContext<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.system_context', 'scheduler', true)`;
+      return fn(tx);
+    });
+  }
+
+  /**
    * Tenant onboarding (§8.1): creates a brand-new Organisation. The id is
    * generated here, client-side, specifically so it can be passed to
    * withTenant() *before* the row exists — the organisations RLS policy

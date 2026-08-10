@@ -96,32 +96,78 @@ export class RbacService {
         },
         include: { role: true },
       });
-      return assignments.some((assignment) => {
-        const permissions = assignment.role
-          .permissions as unknown as Permission[];
-        return permissions.some((p) => {
-          if (!(p.resource === '*' || p.resource === resource)) return false;
-          if (!(p.action === '*' || p.action === action)) return false;
-          switch (p.scope) {
-            case 'organisation':
-              return true;
-            case 'own':
-              return (
-                context.targetMemberId !== undefined &&
-                context.targetMemberId === memberId
-              );
-            case 'chapter':
-              return (
-                assignment.chapterId != null &&
-                context.targetChapterId !== undefined &&
-                assignment.chapterId === context.targetChapterId
-              );
-            default:
-              return false;
-          }
-        });
-      });
+      return assignments.some((assignment) =>
+        this.assignmentGrants(assignment, resource, action, context),
+      );
     });
+  }
+
+  // Shared by hasPermission (does *this* assignment grant it) and
+  // listMembersWithPermissionInTx (which assignments grant it) — same
+  // scope rule either way, see the comment on PermissionContext.
+  private assignmentGrants(
+    assignment: {
+      memberId: string;
+      chapterId: string | null;
+      role: { permissions: unknown };
+    },
+    resource: string,
+    action: string,
+    context: PermissionContext,
+  ): boolean {
+    const permissions = assignment.role.permissions as Permission[];
+    return permissions.some((p) => {
+      if (!(p.resource === '*' || p.resource === resource)) return false;
+      if (!(p.action === '*' || p.action === action)) return false;
+      switch (p.scope) {
+        case 'organisation':
+          return true;
+        case 'own':
+          return (
+            context.targetMemberId !== undefined &&
+            context.targetMemberId === assignment.memberId
+          );
+        case 'chapter':
+          return (
+            assignment.chapterId != null &&
+            context.targetChapterId !== undefined &&
+            assignment.chapterId === context.targetChapterId
+          );
+        default:
+          return false;
+      }
+    });
+  }
+
+  // The inverse of hasPermission: not "does this one member hold this
+  // permission" but "which members do" — for
+  // NotificationService/ClaimService to find every approver who should be
+  // notified a claim entered their stage. Takes an already-open tx (always
+  // called from inside ClaimService's own transaction — RbacService's own
+  // withTenant can't nest inside it) rather than opening its own, unlike
+  // hasPermission, which so far has only ever been called before any
+  // transaction is open.
+  async listMembersWithPermissionInTx(
+    tx: Prisma.TransactionClient,
+    resource: string,
+    action: string,
+    context: PermissionContext = {},
+  ): Promise<string[]> {
+    const now = new Date();
+    const assignments = await tx.roleAssignment.findMany({
+      where: {
+        termStart: { lte: now },
+        OR: [{ termEnd: null }, { termEnd: { gt: now } }],
+      },
+      include: { role: true },
+    });
+    const memberIds = new Set<string>();
+    for (const assignment of assignments) {
+      if (this.assignmentGrants(assignment, resource, action, context)) {
+        memberIds.add(assignment.memberId);
+      }
+    }
+    return Array.from(memberIds);
   }
 
   // What access.util.ts's requireAdmin actually calls — see rbac.types.ts

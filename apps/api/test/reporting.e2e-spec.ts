@@ -149,6 +149,9 @@ describe('Reporting (e2e)', () => {
         tx.memberStatusChange.deleteMany({ where: { organisationId } }),
       );
       await prisma.withTenant(organisationId, (tx) =>
+        tx.notification.deleteMany({ where: { organisationId } }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
         tx.member.deleteMany({ where: { organisationId } }),
       );
       await prisma.withTenant(organisationId, (tx) =>

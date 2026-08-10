@@ -4,9 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '../../generated/prisma/client';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { requirePermission, requireSelfOrAdmin } from '../common/access.util';
 import { LedgerService } from '../ledger/ledger.service';
+import { NotificationService } from '../notifications/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
 import { RuleEngineService } from '../rule-engine/rule-engine.service';
@@ -26,6 +28,7 @@ export class ClaimService {
     private readonly ruleEngine: RuleEngineService,
     private readonly ledger: LedgerService,
     private readonly rbac: RbacService,
+    private readonly notifications: NotificationService,
   ) {}
 
   // FR-CLM-01/02: gated by RuleEngineService.evaluateBenefitEligibility
@@ -85,7 +88,7 @@ export class ClaimService {
       // nothing will ever make.
       const status = rule.approvalChain.length === 0 ? 'APPROVED' : 'SUBMITTED';
 
-      return tx.claim.create({
+      const claim = await tx.claim.create({
         data: {
           organisationId: actor.organisationId,
           memberId: dto.memberId,
@@ -109,7 +112,65 @@ export class ClaimService {
         },
         include: { evidence: true },
       });
+
+      // FR-COM-02: notify the claimant on submission, and — if there's a
+      // first stage to review it — every approver eligible for that stage
+      // (org-scoped grants, plus chapter-scoped ones matching this
+      // member's chapter).
+      await this.notifications.notifyInTx(
+        tx,
+        actor.organisationId,
+        dto.memberId,
+        'CLAIM_STATUS_CHANGED',
+        status === 'APPROVED'
+          ? 'Your claim was submitted and automatically approved (no approval stages configured for this benefit).'
+          : 'Your claim has been submitted and is awaiting review.',
+      );
+      if (status === 'SUBMITTED') {
+        const claimant = await tx.member.findUnique({
+          where: { id: dto.memberId },
+        });
+        await this.notifyStageApprovers(
+          tx,
+          actor.organisationId,
+          claim.id,
+          claimant?.chapterId ?? undefined,
+          rule.approvalChain[0],
+        );
+      }
+
+      return claim;
     });
+  }
+
+  // FR-COM-02: "notify relevant approvers when a claim enters their stage
+  // of the approval chain." claim:approve is flat (see the comment on
+  // STARTER_ROLE_TEMPLATES), so "relevant" means everyone who could
+  // decide *any* stage of this claim — every organisation-scoped holder,
+  // plus chapter-scoped holders matching the claimant's own chapter.
+  private async notifyStageApprovers(
+    tx: Prisma.TransactionClient,
+    organisationId: string,
+    claimId: string,
+    targetChapterId: string | undefined,
+    stageName: string | undefined,
+  ) {
+    const approverIds = await this.rbac.listMembersWithPermissionInTx(
+      tx,
+      'claim',
+      'approve',
+      { targetChapterId },
+    );
+    for (const approverId of approverIds) {
+      await this.notifications.notifyInTx(
+        tx,
+        organisationId,
+        approverId,
+        'CLAIM_STAGE_ENTERED',
+        `A claim is awaiting your review at the "${stageName ?? 'default'}" stage.`,
+        { sourceType: 'claim', sourceId: claimId },
+      );
+    }
   }
 
   // Fetches outside the check, then checks, then writes in its own
@@ -249,20 +310,49 @@ export class ClaimService {
       });
 
       if (dto.decision === 'REJECT') {
-        return tx.claim.update({
+        const rejected = await tx.claim.update({
           where: { id: claim.id },
           data: { status: 'REJECTED' },
         });
+        await this.notifications.notifyInTx(
+          tx,
+          actor.organisationId,
+          claim.memberId,
+          'CLAIM_STATUS_CHANGED',
+          'Your claim was rejected.',
+        );
+        return rejected;
       }
 
       const isFinalStage =
         claim.currentStageIndex >= rule.approvalChain.length - 1;
-      return tx.claim.update({
+      if (isFinalStage) {
+        const approved = await tx.claim.update({
+          where: { id: claim.id },
+          data: { status: 'APPROVED' },
+        });
+        await this.notifications.notifyInTx(
+          tx,
+          actor.organisationId,
+          claim.memberId,
+          'CLAIM_STATUS_CHANGED',
+          'Your claim has been approved.',
+        );
+        return approved;
+      }
+
+      const advanced = await tx.claim.update({
         where: { id: claim.id },
-        data: isFinalStage
-          ? { status: 'APPROVED' }
-          : { currentStageIndex: claim.currentStageIndex + 1 },
+        data: { currentStageIndex: claim.currentStageIndex + 1 },
       });
+      await this.notifyStageApprovers(
+        tx,
+        actor.organisationId,
+        claim.id,
+        claimForContext.member.chapterId ?? undefined,
+        rule.approvalChain[claim.currentStageIndex + 1],
+      );
+      return advanced;
     });
   }
 
@@ -327,10 +417,18 @@ export class ClaimService {
         },
       );
 
-      return tx.claim.update({
+      const paid = await tx.claim.update({
         where: { id: claim.id },
         data: { status: 'PAID', journalEntryId: journalEntry.id },
       });
+      await this.notifications.notifyInTx(
+        tx,
+        actor.organisationId,
+        claim.memberId,
+        'CLAIM_STATUS_CHANGED',
+        'Your approved claim has been disbursed.',
+      );
+      return paid;
     });
   }
 
