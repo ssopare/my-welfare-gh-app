@@ -6,7 +6,11 @@ plugins {
 
 android {
     namespace = "com.welfareplatform.mobile"
-    compileSdk = flutter.compileSdkVersion
+    // Flutter 3.44.9's bundled default (flutter.compileSdkVersion) is 36 —
+    // flutter_secure_storage's Android implementation needs 37+ to compile
+    // against. Pinned as a literal here rather than waiting on a Flutter
+    // SDK bump; bump this again if a future plugin needs a higher one.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
