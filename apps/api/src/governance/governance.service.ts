@@ -50,6 +50,11 @@ export class GovernanceService {
     );
   }
 
+  // include member.account.phoneNumber — surfaced building the admin
+  // console, same recurring gap as every other role/membership list this
+  // session: phoneNumber is the only human-identifying field anywhere in
+  // this system, and it's easy to forget the nested join when a query
+  // only ever needed the bare RoleAssignment before now.
   async listOfficers(actor: AuthTokenPayload, governanceBodyId: string) {
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       const body = await tx.governanceBody.findUnique({
@@ -60,7 +65,10 @@ export class GovernanceService {
       }
       return tx.roleAssignment.findMany({
         where: { governanceBodyId },
-        include: { role: true },
+        include: {
+          role: true,
+          member: { include: { account: { select: { phoneNumber: true } } } },
+        },
         orderBy: { termStart: 'desc' },
       });
     });

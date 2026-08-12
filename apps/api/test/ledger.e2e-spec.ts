@@ -40,6 +40,7 @@ interface ObligationResponse {
   amountPaid: string;
   status: string;
   dueDate: string;
+  contributionPlanId: string;
 }
 
 interface BalanceResponse {
@@ -139,6 +140,7 @@ describe('Ledger (e2e)', () => {
         password: 'correct-horse-battery-staple',
         legalName,
         organisationType: 'voluntary',
+        name: 'Test Admin',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -166,6 +168,7 @@ describe('Ledger (e2e)', () => {
         phoneNumber: uniquePhone(),
         password: 'correct-horse-battery-staple',
         organisationId,
+        name: 'Test Member',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -186,13 +189,14 @@ describe('Ledger (e2e)', () => {
   async function createActivePlan(
     adminToken: string,
     amountValue: string,
+    cadence: string = 'monthly',
   ): Promise<RuleResponse> {
     const createRes = await request(app.getHttpServer())
       .post('/contribution-plans')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: 'Monthly Due',
-        cadence: 'monthly',
+        name: cadence === 'monthly' ? 'Monthly Due' : 'One-Time Contribution',
+        cadence,
         amountValue,
         currency: 'GHS',
       })
@@ -250,6 +254,7 @@ describe('Ledger (e2e)', () => {
         'Cash',
         'Contributions Income',
         'Fund Equity',
+        'Member Credit Balance',
       ].sort(),
     );
   });
@@ -409,7 +414,11 @@ describe('Ledger (e2e)', () => {
     const admin = await registerOrganisation('Ledger Overpayment Org');
     const member = await joinOrganisation(admin.identity.organisationId);
     const fund = await createFund(admin.accessToken);
-    const plan = await createActivePlan(admin.accessToken, '10.00');
+    // one_time, not the monthly default — a monthly overpayment is now a
+    // legitimate "pay ahead" case (see the monthly-waterfall tests below),
+    // not a rejection; a one-time plan has nowhere to extend into, so it's
+    // the case that still genuinely has nothing to do with the excess.
+    const plan = await createActivePlan(admin.accessToken, '10.00', 'one_time');
     await createObligation(
       admin.accessToken,
       plan.id,
@@ -427,6 +436,553 @@ describe('Ledger (e2e)', () => {
         currency: 'GHS',
       })
       .expect(400);
+  });
+
+  it('an admin can switch the org to member_selected allocation; a non-admin cannot', async () => {
+    const admin = await registerOrganisation('Org Settings Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+
+    await request(app.getHttpServer())
+      .patch('/organisation')
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({ paymentAllocationPolicy: 'member_selected' })
+      .expect(403);
+
+    const res = await request(app.getHttpServer())
+      .patch('/organisation')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ paymentAllocationPolicy: 'member_selected' })
+      .expect(200);
+    expect(
+      (res.body as { paymentAllocationPolicy: string }).paymentAllocationPolicy,
+    ).toBe('member_selected');
+  });
+
+  it('selecting which contribution types to pay works under any policy; only member_selected requires a selection', async () => {
+    const admin = await registerOrganisation(
+      'Allocation Policy Validation Org',
+    );
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    // one_time, not the monthly default — a monthly obligation is never
+    // selectable at all (see the dedicated monthly-always-automatic test
+    // below), so it wouldn't actually exercise obligation selection the
+    // way this test means to.
+    const plan = await createActivePlan(admin.accessToken, '10.00', 'one_time');
+    const obligationA = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-06-01',
+    );
+    const obligationB = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-07-01',
+    );
+
+    // Still the default oldest_first policy -> selecting which type to
+    // pay is allowed, not rejected. Covers only obligationA, leaving
+    // obligationB untouched even though it's older-or-equal in the open
+    // set — picking a type doesn't reorder arrears within it, it just
+    // scopes which types are in play at all.
+    const selectedRes = await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '10.00',
+        currency: 'GHS',
+        obligationIds: [obligationA.id],
+      })
+      .expect(201);
+    expect((selectedRes.body as PaymentResponse).allocations).toEqual([
+      { obligationId: obligationA.id, amount: '10' },
+    ]);
+
+    // Confirms the comment above for real: obligationB is genuinely still
+    // open, not just assumed to be — it's what makes the member_selected
+    // rejection below meaningful (there's something to require a pick of).
+    const obligationsAfterSelected = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}/obligations`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    expect(
+      (obligationsAfterSelected.body as ObligationResponse[]).find(
+        (o) => o.id === obligationB.id,
+      )?.status,
+    ).not.toBe('PAID');
+
+    await request(app.getHttpServer())
+      .patch('/organisation')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ paymentAllocationPolicy: 'member_selected' })
+      .expect(200);
+
+    // Now member_selected -> omitting the selection is rejected while
+    // obligationB is still open (oldest_first never required this).
+    await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '10.00',
+        currency: 'GHS',
+      })
+      .expect(400);
+  });
+
+  it('member_selected: covers only the chosen obligations, oldest-first within the selection, leaving an unselected older one untouched', async () => {
+    const admin = await registerOrganisation('Member Selected Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '20.00', 'one_time');
+
+    const oldest = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-06-01',
+    );
+    const middle = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-07-01',
+    );
+    const newest = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-08-01',
+    );
+
+    await request(app.getHttpServer())
+      .patch('/organisation')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ paymentAllocationPolicy: 'member_selected' })
+      .expect(200);
+
+    // Deliberately skips the oldest one, selects the other two out of
+    // due-date order.
+    const paymentRes = await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '40.00',
+        currency: 'GHS',
+        obligationIds: [newest.id, middle.id],
+      })
+      .expect(201);
+    const payment = paymentRes.body as PaymentResponse;
+    // Still oldest-first *within the selection*: middle before newest.
+    expect(payment.allocations).toEqual([
+      { obligationId: middle.id, amount: '20' },
+      { obligationId: newest.id, amount: '20' },
+    ]);
+
+    const obligationsRes = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}/obligations`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const byId = new Map(
+      (obligationsRes.body as ObligationResponse[]).map((o) => [o.id, o]),
+    );
+    expect(byId.get(oldest.id)?.status).toBe('DUE');
+    expect(byId.get(oldest.id)?.amountPaid).toBe('0');
+    expect(byId.get(middle.id)?.status).toBe('PAID');
+    expect(byId.get(newest.id)?.status).toBe('PAID');
+  });
+
+  it('member_selected: rejects a payment exceeding the selected obligations, even though other open obligations exist', async () => {
+    const admin = await registerOrganisation('Member Selected Overpay Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '10.00', 'one_time');
+    const selected = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-06-01',
+    );
+    // A second open obligation exists but is never selected — 20 total is
+    // open, but only 10 was chosen to be covered.
+    await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-07-01',
+    );
+
+    await request(app.getHttpServer())
+      .patch('/organisation')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ paymentAllocationPolicy: 'member_selected' })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '25.00',
+        currency: 'GHS',
+        obligationIds: [selected.id],
+      })
+      .expect(400);
+  });
+
+  it('member_selected: a monthly obligation can never be individually selected, even by id', async () => {
+    const admin = await registerOrganisation('Monthly Not Selectable Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '20.00'); // monthly
+    const obligation = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-06-01',
+    );
+
+    await request(app.getHttpServer())
+      .patch('/organisation')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ paymentAllocationPolicy: 'member_selected' })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '20.00',
+        currency: 'GHS',
+        obligationIds: [obligation.id],
+      })
+      .expect(400);
+  });
+
+  it('member_selected: with only monthly obligations open, no selection is required — it just pays automatically', async () => {
+    const admin = await registerOrganisation(
+      'Monthly Auto Under Member Selected Org',
+    );
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '20.00'); // monthly
+    const obligation = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-06-01',
+    );
+
+    await request(app.getHttpServer())
+      .patch('/organisation')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ paymentAllocationPolicy: 'member_selected' })
+      .expect(200);
+
+    const paymentRes = await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '20.00',
+        currency: 'GHS',
+      })
+      .expect(201);
+    expect((paymentRes.body as PaymentResponse).allocations).toEqual([
+      { obligationId: obligation.id, amount: '20' },
+    ]);
+  });
+
+  it('monthly overpayment spreads forward: covers every open month, then keeps generating and paying future months until the amount runs out', async () => {
+    const admin = await registerOrganisation('Monthly Waterfall Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '20.00'); // monthly
+    const onlyOpen = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-06-01',
+    );
+
+    // GHS 110 against a single GHS 20/month due: covers 5 months in full
+    // (100) and leaves the 6th partially covered (10) — the 5 extra
+    // months don't exist yet as Obligation rows before this payment;
+    // they're generated by it.
+    const paymentRes = await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '110.00',
+        currency: 'GHS',
+      })
+      .expect(201);
+    const payment = paymentRes.body as PaymentResponse;
+    expect(payment.allocations).toHaveLength(6);
+    expect(payment.allocations[0]).toEqual({
+      obligationId: onlyOpen.id,
+      amount: '20',
+    });
+    expect(
+      payment.allocations.slice(1, 5).every((a) => a.amount === '20'),
+    ).toBe(true);
+    expect(payment.allocations[5].amount).toBe('10');
+
+    // The journal entry still balances — no credit balance was actually
+    // needed here (the payment covered a whole number of months plus one
+    // real partial obligation, not an overflow past what could be
+    // generated).
+    const totalDebit = payment.journalEntry.lines.reduce(
+      (sum, l) => sum + Number(l.debit),
+      0,
+    );
+    const totalCredit = payment.journalEntry.lines.reduce(
+      (sum, l) => sum + Number(l.credit),
+      0,
+    );
+    expect(totalDebit).toBe(110);
+    expect(totalCredit).toBe(110);
+
+    const obligationsRes = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}/obligations`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const all = obligationsRes.body as ObligationResponse[];
+    expect(all).toHaveLength(6);
+    const partial = all.find(
+      (o) => o.id === payment.allocations[5].obligationId,
+    );
+    expect(partial?.status).toBe('PARTIALLY_PAID');
+    expect(partial?.amountPaid).toBe('10');
+  });
+
+  it('a follow-up payment tops up the partial month first, then rolls the rest into the next one', async () => {
+    const admin = await registerOrganisation('Monthly Waterfall Followup Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '20.00'); // monthly
+    await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-06-01',
+    );
+
+    await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '110.00', // 5 full months + a 6th left at 10/20
+        currency: 'GHS',
+      })
+      .expect(201);
+
+    const secondPaymentRes = await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '30.00',
+        currency: 'GHS',
+      })
+      .expect(201);
+    const second = secondPaymentRes.body as PaymentResponse;
+    // Tops up the 6th month's remaining 10, then fully covers a new 7th
+    // month with the remaining 20 — not two fresh partials.
+    expect(second.allocations).toHaveLength(2);
+    expect(second.allocations[0].amount).toBe('10');
+    expect(second.allocations[1].amount).toBe('20');
+
+    const obligationsRes = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}/obligations`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const all = obligationsRes.body as ObligationResponse[];
+    expect(all).toHaveLength(7);
+    expect(all.every((o) => o.status === 'PAID')).toBe(true);
+  });
+
+  it("an extreme monthly overpayment parks the leftover as the member's credit balance and posts a balanced entry for it", async () => {
+    const admin = await registerOrganisation('Monthly Credit Balance Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '20.00'); // monthly
+    await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-06-01',
+    );
+
+    // 20 (the one open obligation) + 24 more months x 20 = 500, plus 15
+    // left over that has nowhere left to go (24-month safety cap).
+    const paymentRes = await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '515.00',
+        currency: 'GHS',
+      })
+      .expect(201);
+    const payment = paymentRes.body as PaymentResponse;
+    expect(payment.allocations).toHaveLength(25); // the 1 existing + 24 generated
+
+    const totalCredit = payment.journalEntry.lines.reduce(
+      (sum, l) => sum + Number(l.credit),
+      0,
+    );
+    const totalDebit = payment.journalEntry.lines.reduce(
+      (sum, l) => sum + Number(l.debit),
+      0,
+    );
+    expect(totalDebit).toBe(515);
+    expect(totalCredit).toBe(515); // balanced, including the credit-balance line
+
+    const creditLine = payment.journalEntry.lines.find(
+      (l) => Number(l.credit) === 15,
+    );
+    expect(creditLine).toBeDefined();
+
+    // Confirmed by spending it: a small follow-up payment should need no
+    // new obligation at all, since 15 of credit already covers it.
+    const followUpRes = await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '5.00', // 5 + the 15 credit = 20, exactly one more month
+        currency: 'GHS',
+      })
+      .expect(201);
+    expect((followUpRes.body as PaymentResponse).allocations).toHaveLength(1);
+  });
+
+  it('an advance payment that crosses a rate change splits at the correct month: old rate before, new rate from the effective date', async () => {
+    const admin = await registerOrganisation('Monthly Rate Change Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+
+    // v1: GHS 100/month, effective from June 2026.
+    const v1CreateRes = await request(app.getHttpServer())
+      .post('/contribution-plans')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Monthly Staff Contribution',
+        cadence: 'monthly',
+        amountValue: '100.00',
+        currency: 'GHS',
+      })
+      .expect(201);
+    const v1 = v1CreateRes.body as RuleResponse;
+    await request(app.getHttpServer())
+      .post(`/contribution-plans/${v1.id}/activate`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ effectiveFrom: '2026-06-01' })
+      .expect(201);
+
+    // One real open month under v1 (June), created while v1 is still
+    // ACTIVE — a genuine due that predates the rate change.
+    const june = await createObligation(
+      admin.accessToken,
+      v1.id,
+      member.identity.memberId,
+      '2026-06-01',
+    );
+
+    // The group votes to raise dues: v2 at GHS 120/month, effective from
+    // September 2026, supersedes v1 (which becomes SUPERSEDED, effectiveTo
+    // 2026-09-01).
+    const v2CreateRes = await request(app.getHttpServer())
+      .post('/contribution-plans')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Monthly Staff Contribution',
+        cadence: 'monthly',
+        amountValue: '120.00',
+        currency: 'GHS',
+        supersedesId: v1.id,
+      })
+      .expect(201);
+    const v2 = v2CreateRes.body as RuleResponse;
+    await request(app.getHttpServer())
+      .post(`/contribution-plans/${v2.id}/activate`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ effectiveFrom: '2026-09-01' })
+      .expect(201);
+
+    // GHS 470 advance payment: June(100, v1) + July(100, v1) + August(100,
+    // v1) + September(120, v2 — the rate change lands here) + a 50
+    // partial October (v2). The extension phase has to resolve each
+    // generated month against whichever plan version actually covers it,
+    // not statically reuse June's (now-superseded) plan the whole way.
+    const paymentRes = await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '470.00',
+        currency: 'GHS',
+      })
+      .expect(201);
+    const payment = paymentRes.body as PaymentResponse;
+    expect(payment.allocations).toHaveLength(5);
+    expect(payment.allocations[0]).toEqual({
+      obligationId: june.id,
+      amount: '100',
+    });
+    expect(payment.allocations[1].amount).toBe('100'); // July, still v1
+    expect(payment.allocations[2].amount).toBe('100'); // August, still v1
+    expect(payment.allocations[3].amount).toBe('120'); // September, v2's rate
+    expect(payment.allocations[4].amount).toBe('50'); // October, partial at v2's rate
+
+    const totalDebit = payment.journalEntry.lines.reduce(
+      (sum, l) => sum + Number(l.debit),
+      0,
+    );
+    const totalCredit = payment.journalEntry.lines.reduce(
+      (sum, l) => sum + Number(l.credit),
+      0,
+    );
+    expect(totalDebit).toBe(470);
+    expect(totalCredit).toBe(470);
+
+    const obligationsRes = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}/obligations`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const all = obligationsRes.body as ObligationResponse[];
+    const september = all.find(
+      (o) => o.id === payment.allocations[3].obligationId,
+    );
+    const october = all.find(
+      (o) => o.id === payment.allocations[4].obligationId,
+    );
+    expect(september?.contributionPlanId).toBe(v2.id);
+    expect(september?.amountValue).toBe('120');
+    expect(october?.contributionPlanId).toBe(v2.id);
+    expect(october?.amountValue).toBe('120');
+    expect(october?.status).toBe('PARTIALLY_PAID');
+    expect(october?.amountPaid).toBe('50');
   });
 
   it('a member can pay their own obligation; cannot record a payment for another member without admin', async () => {
@@ -502,6 +1058,29 @@ describe('Ledger (e2e)', () => {
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .expect(200);
     expect((afterReversal.body as BalanceResponse).balance).toBe('0');
+
+    // The reversal itself is a second journal entry, referencing the
+    // original — listJournalEntries (admin-only) must show both.
+    await request(app.getHttpServer())
+      .get('/journal-entries')
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(403);
+
+    const listRes = await request(app.getHttpServer())
+      .get('/journal-entries')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const entries = listRes.body as { id: string; lines: unknown[] }[];
+    expect(entries.map((e) => e.id)).toEqual(expect.arrayContaining([entryId]));
+    expect(entries.length).toBeGreaterThanOrEqual(2);
+
+    const scopedRes = await request(app.getHttpServer())
+      .get(`/journal-entries?fundId=${fund.id}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    expect((scopedRes.body as { id: string }[]).map((e) => e.id)).toEqual(
+      expect.arrayContaining([entryId]),
+    );
   });
 
   it("cross-tenant: an admin cannot see or use another organisation's fund", async () => {

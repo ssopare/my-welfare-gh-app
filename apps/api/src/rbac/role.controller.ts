@@ -38,6 +38,14 @@ export class RoleController {
     return this.rbac.assignRole(user, roleId, dto);
   }
 
+  @Get('roles/:roleId/assignments')
+  listAssignments(
+    @CurrentUser() user: AuthTokenPayload,
+    @Param('roleId') roleId: string,
+  ) {
+    return this.rbac.listAssignmentsForRole(user, roleId);
+  }
+
   @Patch('role-assignments/:id/revoke')
   revoke(@CurrentUser() user: AuthTokenPayload, @Param('id') id: string) {
     return this.rbac.revokeAssignment(user, id);

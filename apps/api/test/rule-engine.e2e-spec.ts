@@ -22,6 +22,12 @@ interface RuleResponse {
   effectiveFrom: string | null;
   effectiveTo: string | null;
   supersedesId: string | null;
+  defaultFundId?: string | null;
+}
+
+interface FundResponse {
+  id: string;
+  name: string;
 }
 
 interface ObligationResponse {
@@ -90,6 +96,20 @@ describe('Rule engine (e2e)', () => {
         tx.subscription.deleteMany({ where: { organisationId } }),
       );
       await prisma.withTenant(organisationId, (tx) =>
+        tx.journalLine.deleteMany({
+          where: { journalEntry: { organisationId } },
+        }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
+        tx.journalEntry.deleteMany({ where: { organisationId } }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
+        tx.ledgerAccount.deleteMany({ where: { organisationId } }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
+        tx.fund.deleteMany({ where: { organisationId } }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
         tx.organisation.delete({ where: { id: organisationId } }),
       );
     }
@@ -114,6 +134,7 @@ describe('Rule engine (e2e)', () => {
         password: 'correct-horse-battery-staple',
         legalName,
         organisationType: 'voluntary',
+        name: 'Test Admin',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -141,6 +162,7 @@ describe('Rule engine (e2e)', () => {
         phoneNumber: uniquePhone(),
         password: 'correct-horse-battery-staple',
         organisationId,
+        name: 'Test Member',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -234,6 +256,44 @@ describe('Rule engine (e2e)', () => {
         .set('Authorization', `Bearer ${admin.accessToken}`)
         .send({})
         .expect(400);
+
+      // /contribution-plans (listActive) only ever shows the currently
+      // in-effect version — /contribution-plans/all is the admin
+      // management view that also surfaces the now-SUPERSEDED v1.
+      await request(app.getHttpServer())
+        .get('/contribution-plans/all')
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .expect(403);
+
+      const allRes = await request(app.getHttpServer())
+        .get('/contribution-plans/all')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      const all = allRes.body as RuleResponse[];
+      expect(all.map((p) => p.id)).toEqual(
+        expect.arrayContaining([v1.id, v2.id]),
+      );
+      expect(all.find((p) => p.id === v1.id)?.status).toBe('SUPERSEDED');
+
+      // Single-plan lookup, admin-only, cross-tenant isolated.
+      await request(app.getHttpServer())
+        .get(`/contribution-plans/${v1.id}`)
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .expect(403);
+
+      const getRes = await request(app.getHttpServer())
+        .get(`/contribution-plans/${v1.id}`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      expect((getRes.body as RuleResponse).id).toBe(v1.id);
+
+      const otherOrgAdmin = await registerOrganisation(
+        'Rule Engine Plan Cross-Tenant Org',
+      );
+      await request(app.getHttpServer())
+        .get(`/contribution-plans/${v1.id}`)
+        .set('Authorization', `Bearer ${otherOrgAdmin.accessToken}`)
+        .expect(404);
     });
 
     it('rejects a draft plan, which then can never be activated', async () => {
@@ -261,6 +321,22 @@ describe('Rule engine (e2e)', () => {
         .set('Authorization', `Bearer ${admin.accessToken}`)
         .send({})
         .expect(400);
+
+      const activeListRes = await request(app.getHttpServer())
+        .get('/contribution-plans')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      expect(
+        (activeListRes.body as RuleResponse[]).map((p) => p.id),
+      ).not.toContain(plan.id);
+
+      const allRes = await request(app.getHttpServer())
+        .get('/contribution-plans/all')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      expect(
+        (allRes.body as RuleResponse[]).find((p) => p.id === plan.id)?.status,
+      ).toBe('REJECTED');
     });
 
     it('computes a fixed-amount obligation, self or admin only, cross-tenant isolated', async () => {
@@ -309,6 +385,60 @@ describe('Rule engine (e2e)', () => {
         .set('Authorization', `Bearer ${otherOrgAdmin.accessToken}`)
         .send({ memberId: member.identity.memberId, periodDate: '2026-09-01' })
         .expect(404);
+    });
+
+    it('sets a default fund on an existing plan in place, admin-only, no new version created', async () => {
+      const admin = await registerOrganisation('Rule Engine Default Fund Org');
+
+      const createRes = await request(app.getHttpServer())
+        .post('/contribution-plans')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({
+          name: 'Monthly Due',
+          cadence: 'monthly',
+          amountValue: '20.00',
+          currency: 'GHS',
+        })
+        .expect(201);
+      const plan = createRes.body as RuleResponse;
+      expect(plan.defaultFundId).toBeNull();
+
+      const fundRes = await request(app.getHttpServer())
+        .post('/funds')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ name: 'General Welfare Fund' })
+        .expect(201);
+      const fund = fundRes.body as FundResponse;
+
+      const member = await joinOrganisation(admin.identity.organisationId);
+      await request(app.getHttpServer())
+        .patch(`/contribution-plans/${plan.id}/default-fund`)
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .send({ fundId: fund.id })
+        .expect(403);
+
+      const patchRes = await request(app.getHttpServer())
+        .patch(`/contribution-plans/${plan.id}/default-fund`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ fundId: fund.id })
+        .expect(200);
+      const updated = patchRes.body as RuleResponse;
+      expect(updated.id).toBe(plan.id);
+      expect(updated.defaultFundId).toBe(fund.id);
+      // Same id, same status — edited in place, not a new draft/version.
+      expect(updated.status).toBe(plan.status);
+
+      await request(app.getHttpServer())
+        .patch(`/contribution-plans/${plan.id}/default-fund`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ fundId: '11111111-1111-4111-8111-111111111111' })
+        .expect(404);
+
+      const getRes = await request(app.getHttpServer())
+        .get(`/contribution-plans/${plan.id}`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      expect((getRes.body as RuleResponse).defaultFundId).toBe(fund.id);
     });
   });
 
@@ -459,6 +589,68 @@ describe('Rule engine (e2e)', () => {
           eventDate: new Date().toISOString(),
         })
         .expect(403);
+    });
+
+    it('lists all benefit rules regardless of status, admin-only', async () => {
+      const admin = await registerOrganisation('Rule Engine List All Org');
+      const member = await joinOrganisation(admin.identity.organisationId);
+
+      const draftRes = await request(app.getHttpServer())
+        .post('/benefit-rules')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({
+          name: 'Funeral Grant',
+          triggerEvent: 'member.death',
+          subjectTypes: ['self'],
+          amountValue: '5000.00',
+          currency: 'GHS',
+          occurrenceCapMax: 1,
+        })
+        .expect(201);
+      const draft = draftRes.body as RuleResponse;
+
+      await request(app.getHttpServer())
+        .get('/benefit-rules/all')
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .expect(403);
+
+      const allRes = await request(app.getHttpServer())
+        .get('/benefit-rules/all')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      const all = allRes.body as RuleResponse[];
+      expect(all.map((r) => r.id)).toContain(draft.id);
+      expect(all.find((r) => r.id === draft.id)?.status).toBe('DRAFT');
+
+      // Single-rule lookup, admin-only, cross-tenant isolated.
+      await request(app.getHttpServer())
+        .get(`/benefit-rules/${draft.id}`)
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .expect(403);
+
+      const getRes = await request(app.getHttpServer())
+        .get(`/benefit-rules/${draft.id}`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      expect((getRes.body as RuleResponse).id).toBe(draft.id);
+
+      const otherOrgAdmin = await registerOrganisation(
+        'Rule Engine Rule Cross-Tenant Org',
+      );
+      await request(app.getHttpServer())
+        .get(`/benefit-rules/${draft.id}`)
+        .set('Authorization', `Bearer ${otherOrgAdmin.accessToken}`)
+        .expect(404);
+
+      // The regular listActive endpoint must NOT show it yet — it's still
+      // a draft.
+      const activeRes = await request(app.getHttpServer())
+        .get('/benefit-rules')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      expect((activeRes.body as RuleResponse[]).map((r) => r.id)).not.toContain(
+        draft.id,
+      );
     });
   });
 });

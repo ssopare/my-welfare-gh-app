@@ -15,6 +15,13 @@ const STANDARD_CHART_OF_ACCOUNTS = [
   { name: 'Benefits Payable', type: 'LIABILITY' as const },
   { name: 'Benefits Expense', type: 'EXPENSE' as const },
   { name: 'Fund Equity', type: 'EQUITY' as const },
+  // What a member has paid ahead of what's currently owed (monthly
+  // contributions only — see ObligationService.recordContributionPaymentInTx)
+  // sits here as a real liability until it's consumed by a future
+  // payment, rather than as a number nowhere in the ledger. Funds created
+  // before this existed get it lazily, find-or-created the first time a
+  // payment actually needs it.
+  { name: 'Member Credit Balance', type: 'LIABILITY' as const },
 ];
 
 @Injectable()

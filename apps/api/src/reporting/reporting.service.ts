@@ -121,6 +121,7 @@ export class ReportingService {
 
       const obligations = await tx.obligation.findMany({
         where: { memberId },
+        include: { contributionPlan: { select: { name: true } } },
         orderBy: { dueDate: 'asc' },
       });
 
@@ -141,6 +142,7 @@ export class ReportingService {
 
       const claims = await tx.claim.findMany({
         where: { memberId },
+        include: { benefitRule: { select: { name: true } } },
         orderBy: { createdAt: 'desc' },
       });
 
@@ -171,6 +173,12 @@ export class ReportingService {
   // under — reuses DefaulterService.getConsecutiveMissedCount directly so
   // this register can never disagree with what an actual reassessment
   // would decide.
+  // agingBuckets: the outstanding balance of this row's open obligations,
+  // split by how many days overdue each one is (0-30/31-60/61-90/90+) —
+  // the concrete, data-backed version of the admin UI design plan's
+  // "defaulter aging heatmap" idea. Bucketed by amount, not obligation
+  // count, so the heatmap reads as "how much is aging where," consistent
+  // with arrearsOwed already being an amount, not a count.
   async defaulterRegister(actor: AuthTokenPayload) {
     await requirePermission(this.rbac, actor, 'ledger', 'view');
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
@@ -186,7 +194,14 @@ export class ReportingService {
         planName: string | undefined;
         consecutiveMissedCount: number;
         arrearsOwed: string;
+        agingBuckets: {
+          days0To30: string;
+          days31To60: string;
+          days61To90: string;
+          days90Plus: string;
+        };
       }[] = [];
+      const now = new Date();
 
       for (const member of members) {
         const account = await tx.account.findUnique({
@@ -208,13 +223,42 @@ export class ReportingService {
             member.id,
             planId,
           );
-          const arrears = obligations
-            .filter((o) => o.contributionPlanId === planId)
-            .reduce(
-              (sum, o) =>
-                sum.plus(new Prisma.Decimal(o.amountValue).minus(o.amountPaid)),
-              new Prisma.Decimal(0),
+          const planObligations = obligations.filter(
+            (o) => o.contributionPlanId === planId,
+          );
+          const arrears = planObligations.reduce(
+            (sum, o) =>
+              sum.plus(new Prisma.Decimal(o.amountValue).minus(o.amountPaid)),
+            new Prisma.Decimal(0),
+          );
+
+          const buckets = {
+            days0To30: new Prisma.Decimal(0),
+            days31To60: new Prisma.Decimal(0),
+            days61To90: new Prisma.Decimal(0),
+            days90Plus: new Prisma.Decimal(0),
+          };
+          for (const obligation of planObligations) {
+            const outstanding = new Prisma.Decimal(
+              obligation.amountValue,
+            ).minus(obligation.amountPaid);
+            if (outstanding.lessThanOrEqualTo(0)) continue;
+            const daysOverdue = Math.max(
+              0,
+              Math.floor(
+                (now.getTime() - obligation.dueDate.getTime()) /
+                  (1000 * 60 * 60 * 24),
+              ),
             );
+            if (daysOverdue <= 30)
+              buckets.days0To30 = buckets.days0To30.plus(outstanding);
+            else if (daysOverdue <= 60)
+              buckets.days31To60 = buckets.days31To60.plus(outstanding);
+            else if (daysOverdue <= 90)
+              buckets.days61To90 = buckets.days61To90.plus(outstanding);
+            else buckets.days90Plus = buckets.days90Plus.plus(outstanding);
+          }
+
           rows.push({
             memberId: member.id,
             phoneNumber: account?.phoneNumber,
@@ -223,6 +267,12 @@ export class ReportingService {
             planName: plan?.name,
             consecutiveMissedCount: missed,
             arrearsOwed: arrears.toString(),
+            agingBuckets: {
+              days0To30: buckets.days0To30.toString(),
+              days31To60: buckets.days31To60.toString(),
+              days61To90: buckets.days61To90.toString(),
+              days90Plus: buckets.days90Plus.toString(),
+            },
           });
         }
       }
@@ -230,11 +280,149 @@ export class ReportingService {
     });
   }
 
+  // Dashboard's "Fund Position Trend" chart. The running total cash
+  // position (sum of every ASSET-type ledger account's balance — Cash
+  // accounts) at each of the last 6 month-ends, derived fresh from
+  // JournalLine debits/credits, same "never a stored, independently-
+  // editable number" principle as every other report here — there's no
+  // separate balance-history table to drift out of sync with the ledger.
+  // Single pass: lines are fetched once, ordered by postedAt, and the
+  // running balance advances through each cutoff in turn rather than
+  // re-summing from scratch per month.
+  async fundPositionTrend(actor: AuthTokenPayload) {
+    await requirePermission(this.rbac, actor, 'ledger', 'view');
+    return this.prisma.withTenant(actor.organisationId, async (tx) => {
+      const lines = await tx.journalLine.findMany({
+        where: { ledgerAccount: { type: 'ASSET' } },
+        select: {
+          debit: true,
+          credit: true,
+          journalEntry: { select: { postedAt: true } },
+        },
+        orderBy: { journalEntry: { postedAt: 'asc' } },
+      });
+
+      const now = new Date();
+      const cutoffs: { month: string; cutoff: Date }[] = [];
+      for (let i = 5; i >= 0; i -= 1) {
+        // Day 0 of next month = the last day of the target month — a
+        // symbolic month-end label; using it as the actual filter cutoff
+        // is safe even mid-month since nothing in the ledger is ever
+        // post-dated past "now".
+        const cutoff = new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth() - i + 1,
+            0,
+            23,
+            59,
+            59,
+            999,
+          ),
+        );
+        cutoffs.push({
+          month: cutoff.toLocaleString('en-US', {
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'UTC',
+          }),
+          cutoff,
+        });
+      }
+
+      let lineIndex = 0;
+      let runningBalance = new Prisma.Decimal(0);
+      const trend: { month: string; balance: string }[] = [];
+      for (const { month, cutoff } of cutoffs) {
+        while (
+          lineIndex < lines.length &&
+          lines[lineIndex].journalEntry.postedAt <= cutoff
+        ) {
+          runningBalance = runningBalance
+            .plus(lines[lineIndex].debit)
+            .minus(lines[lineIndex].credit);
+          lineIndex += 1;
+        }
+        trend.push({ month, balance: runningBalance.toString() });
+      }
+      return trend;
+    });
+  }
+
+  // Dashboard's "Contributions vs. claims" chart — two real monthly
+  // totals side by side, over the same 6-month window as the fund trend
+  // above: contributions collected (credits to "Contributions Income")
+  // and claims paid out (debits to "Benefits Expense", posted by
+  // ClaimService's disbursement step). Both are summed fresh from
+  // JournalLine, not read off Obligation/Claim running totals, for the
+  // same reason as every other report in this file.
+  async contributionsVsClaimsMonthly(actor: AuthTokenPayload) {
+    await requirePermission(this.rbac, actor, 'ledger', 'view');
+    return this.prisma.withTenant(actor.organisationId, async (tx) => {
+      const lines = await tx.journalLine.findMany({
+        where: {
+          ledgerAccount: {
+            name: { in: ['Contributions Income', 'Benefits Expense'] },
+          },
+        },
+        select: {
+          debit: true,
+          credit: true,
+          ledgerAccount: { select: { name: true } },
+          journalEntry: { select: { postedAt: true } },
+        },
+      });
+
+      const now = new Date();
+      const months = Array.from({ length: 6 }, (_, index) => {
+        const i = 5 - index;
+        const start = new Date(
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1),
+        );
+        const end = new Date(
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i + 1, 0, 23, 59, 59, 999),
+        );
+        return {
+          month: end.toLocaleString('en-US', {
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'UTC',
+          }),
+          start,
+          end,
+          contributions: new Prisma.Decimal(0),
+          claimsPaid: new Prisma.Decimal(0),
+        };
+      });
+
+      for (const line of lines) {
+        const postedAt = line.journalEntry.postedAt;
+        const bucket = months.find((m) => postedAt >= m.start && postedAt <= m.end);
+        if (!bucket) continue;
+        if (line.ledgerAccount.name === 'Contributions Income') {
+          bucket.contributions = bucket.contributions.plus(line.credit);
+        } else {
+          bucket.claimsPaid = bucket.claimsPaid.plus(line.debit);
+        }
+      }
+
+      return months.map((m) => ({
+        month: m.month,
+        contributions: m.contributions.toString(),
+        claimsPaid: m.claimsPaid.toString(),
+      }));
+    });
+  }
+
   // "Amounts, beneficiaries, benefit type, approver trail." Every PAID
   // claim already carries everything this needs — the approval chain
   // (ClaimStageAction) and the disbursement posting (JournalEntry) both
   // exist because of how the Claims slice wired those two together, not
-  // anything new built for reporting.
+  // anything new built for reporting. Joins the recipient's phone number
+  // and, per approver, theirs too — ClaimStageAction.actorMemberId has no
+  // Prisma relation to Member (a plain FK, not a declared @relation), so
+  // approver phone numbers need a separate batched lookup rather than a
+  // nested include.
   async disbursementReport(actor: AuthTokenPayload, from?: Date, to?: Date) {
     await requirePermission(this.rbac, actor, 'ledger', 'view');
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
@@ -256,13 +444,29 @@ export class ReportingService {
           benefitRule: true,
           journalEntry: true,
           stageActions: { orderBy: { decidedAt: 'asc' } },
+          member: { include: { account: { select: { phoneNumber: true } } } },
         },
         orderBy: { createdAt: 'desc' },
       });
 
+      const actorIds = new Set<string>();
+      for (const claim of claims) {
+        for (const action of claim.stageActions) {
+          actorIds.add(action.actorMemberId);
+        }
+      }
+      const actors = await tx.member.findMany({
+        where: { id: { in: Array.from(actorIds) } },
+        include: { account: { select: { phoneNumber: true } } },
+      });
+      const actorPhoneById = new Map(
+        actors.map((a) => [a.id, a.account.phoneNumber]),
+      );
+
       return claims.map((claim) => ({
         claimId: claim.id,
         memberId: claim.memberId,
+        phoneNumber: claim.member.account.phoneNumber,
         dependantId: claim.dependantId,
         benefitRuleId: claim.benefitRuleId,
         benefitName: claim.benefitRule.name,
@@ -275,6 +479,7 @@ export class ReportingService {
           stageIndex: action.stageIndex,
           stageName: action.stageName,
           actorMemberId: action.actorMemberId,
+          actorPhoneNumber: actorPhoneById.get(action.actorMemberId),
           decision: action.decision,
           decidedAt: action.decidedAt,
           comment: action.comment,

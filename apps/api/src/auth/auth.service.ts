@@ -7,9 +7,11 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
 import { SubscriptionService } from '../subscriptions/subscription.service';
+import { CreateAdditionalOrganisationDto } from './dto/create-additional-organisation.dto';
 import { JoinOrganisationDto } from './dto/join-organisation.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterOrganisationDto } from './dto/register-organisation.dto';
@@ -22,6 +24,32 @@ export interface AuthTokenPayload {
 }
 
 const PASSWORD_SALT_ROUNDS = 12;
+
+// Excludes 0/O, 1/I/L — characters easily confused when a join code is
+// read aloud or handwritten, which is the whole point of having one.
+const JOIN_CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const JOIN_CODE_SUFFIX_LENGTH = 5;
+const JOIN_CODE_GENERATION_ATTEMPTS = 5;
+
+function deriveJoinCodePrefix(legalName: string): string {
+  const initials = legalName
+    .split(/\s+/)
+    .map((word) => word.replace(/[^a-zA-Z]/g, '').charAt(0))
+    .filter(Boolean)
+    .join('')
+    .toUpperCase()
+    .slice(0, 3);
+  return initials || 'ORG';
+}
+
+function generateJoinCode(legalName: string): string {
+  let suffix = '';
+  for (let i = 0; i < JOIN_CODE_SUFFIX_LENGTH; i += 1) {
+    suffix +=
+      JOIN_CODE_ALPHABET[Math.floor(Math.random() * JOIN_CODE_ALPHABET.length)];
+  }
+  return `${deriveJoinCodePrefix(legalName)}-${suffix}`;
+}
 
 @Injectable()
 export class AuthService {
@@ -44,60 +72,19 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, PASSWORD_SALT_ROUNDS);
     const account = await this.prisma.account.create({
-      data: { phoneNumber: dto.phoneNumber, passwordHash },
+      data: { phoneNumber: dto.phoneNumber, passwordHash, name: dto.name },
     });
 
-    const organisation = await this.prisma.provisionOrganisation({
-      legalName: dto.legalName,
-      type: dto.organisationType,
-    });
+    const organisation = await this.provisionOrganisationWithJoinCode(dto);
 
-    const member = await this.prisma.withTenant(organisation.id, async (tx) => {
-      const created = await tx.member.create({
-        data: {
-          accountId: account.id,
-          organisationId: organisation.id,
-          role: 'ADMIN',
-          // The founding admin isn't "pending" anything — there's no one
-          // else in the org yet to approve them. PENDING (the default for
-          // everyone else) is for FR-MEM-09's join-an-existing-org path.
-          status: 'ACTIVE',
-        },
-      });
-      await tx.memberStatusChange.create({
-        data: {
-          memberId: created.id,
-          organisationId: organisation.id,
-          fromStatus: null,
-          toStatus: 'ACTIVE',
-          reason: 'Founding admin at tenant self-registration',
-        },
-      });
-
-      // §13.2: a fresh tenant gets real, assignable roles from day one,
-      // not an empty role list — and the founding admin's actual
-      // authorization now comes from holding this RoleAssignment, not
-      // from Member.role (see the schema comment on MemberRole).
-      const roleIdsByName = await this.rbac.seedStarterRolesInTx(
+    const member = await this.prisma.withTenant(organisation.id, (tx) =>
+      this.foundOrganisationMemberInTx(
         tx,
         organisation.id,
-      );
-      const orgAdminRoleId = roleIdsByName.get('Org Admin');
-      if (!orgAdminRoleId) {
-        throw new Error('Org Admin starter role template failed to seed');
-      }
-      await this.rbac.assignRoleInTx(
-        tx,
-        organisation.id,
-        created.id,
-        orgAdminRoleId,
-      );
-
-      // §18.1: "Free Trial: every new tenant, automatically."
-      await this.subscriptions.createTrialInTx(tx, organisation.id);
-
-      return created;
-    });
+        account.id,
+        'Founding admin at tenant self-registration',
+      ),
+    );
 
     return this.issueToken({
       accountId: account.id,
@@ -107,7 +94,148 @@ export class AuthService {
     });
   }
 
+  // FR-ONB-01's other direction: an already-authenticated account founding
+  // an *additional* organisation, rather than registerOrganisation's
+  // brand-new-Account path (which explicitly refuses a phone number that's
+  // already registered — see the ConflictException above). Same founding-
+  // admin setup, just keyed to the caller's existing accountId instead of
+  // creating a new one, and returning a token scoped to the new org since
+  // every session here is single-org — the caller lands in the new
+  // organisation's context immediately, the same way registering does.
+  async createAdditionalOrganisation(
+    actor: AuthTokenPayload,
+    dto: CreateAdditionalOrganisationDto,
+  ) {
+    const organisation = await this.provisionOrganisationWithJoinCode(dto);
+
+    const member = await this.prisma.withTenant(organisation.id, (tx) =>
+      this.foundOrganisationMemberInTx(
+        tx,
+        organisation.id,
+        actor.sub,
+        'Founding admin — additional organisation created from an existing account',
+      ),
+    );
+
+    return this.issueToken({
+      accountId: actor.sub,
+      memberId: member.id,
+      organisationId: organisation.id,
+      role: member.role,
+    });
+  }
+
+  private async foundOrganisationMemberInTx(
+    tx: Prisma.TransactionClient,
+    organisationId: string,
+    accountId: string,
+    statusChangeReason: string,
+  ) {
+    const created = await tx.member.create({
+      data: {
+        accountId,
+        organisationId,
+        role: 'ADMIN',
+        // The founding admin isn't "pending" anything — there's no one
+        // else in the org yet to approve them. PENDING (the default for
+        // everyone else) is for FR-MEM-09's join-an-existing-org path.
+        status: 'ACTIVE',
+      },
+    });
+    await tx.memberStatusChange.create({
+      data: {
+        memberId: created.id,
+        organisationId,
+        fromStatus: null,
+        toStatus: 'ACTIVE',
+        reason: statusChangeReason,
+      },
+    });
+
+    // §13.2: a fresh tenant gets real, assignable roles from day one,
+    // not an empty role list — and the founding admin's actual
+    // authorization now comes from holding this RoleAssignment, not
+    // from Member.role (see the schema comment on MemberRole).
+    const roleIdsByName = await this.rbac.seedStarterRolesInTx(
+      tx,
+      organisationId,
+    );
+    const orgAdminRoleId = roleIdsByName.get('Org Admin');
+    if (!orgAdminRoleId) {
+      throw new Error('Org Admin starter role template failed to seed');
+    }
+    await this.rbac.assignRoleInTx(tx, organisationId, created.id, orgAdminRoleId);
+
+    // §18.1: "Free Trial: every new tenant, automatically."
+    await this.subscriptions.createTrialInTx(tx, organisationId);
+
+    return created;
+  }
+
+  // Wraps PrismaService.provisionOrganisation with a generated joinCode,
+  // retrying on the astronomically unlikely chance of a collision (5
+  // random chars from a 32-symbol alphabet — see generateJoinCode) rather
+  // than trusting it never happens.
+  private async provisionOrganisationWithJoinCode(
+    dto: { legalName: string; organisationType: string },
+  ) {
+    for (
+      let attempt = 1;
+      attempt <= JOIN_CODE_GENERATION_ATTEMPTS;
+      attempt += 1
+    ) {
+      try {
+        return await this.prisma.provisionOrganisation({
+          legalName: dto.legalName,
+          type: dto.organisationType,
+          joinCode: generateJoinCode(dto.legalName),
+        });
+      } catch (error) {
+        const isJoinCodeCollision =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002' &&
+          (error.meta?.target as string[] | undefined)?.includes('joinCode');
+        if (!isJoinCodeCollision || attempt === JOIN_CODE_GENERATION_ATTEMPTS) {
+          throw error;
+        }
+      }
+    }
+    // Unreachable — the loop above always either returns or throws.
+    throw new Error('Failed to generate a unique join code');
+  }
+
+  // Either dto.joinCode (the normal path — see the organisation_join_code
+  // migration) or dto.organisationId (the raw id, still accepted — e.g.
+  // an admin re-inviting someone who already has the id from elsewhere)
+  // can identify the organisation to join; exactly one of them is
+  // required, enforced here rather than at the DTO level since it's a
+  // cross-field business rule, not a per-field shape check.
+  private async resolveOrganisationId(
+    dto: JoinOrganisationDto,
+  ): Promise<string> {
+    if (dto.organisationId) {
+      return dto.organisationId;
+    }
+    if (!dto.joinCode) {
+      throw new BadRequestException(
+        'Either an organisationId or a joinCode is required',
+      );
+    }
+    const organisation = await this.prisma.withJoinCodeLookupContext((tx) =>
+      tx.organisation.findFirst({
+        where: { joinCode: dto.joinCode },
+        select: { id: true },
+      }),
+    );
+    if (!organisation) {
+      throw new NotFoundException('Invalid join code');
+    }
+    return organisation.id;
+  }
+
   async joinOrganisation(dto: JoinOrganisationDto) {
+    const organisationId = await this.resolveOrganisationId(dto);
+
     let account = await this.prisma.account.findUnique({
       where: { phoneNumber: dto.phoneNumber },
     });
@@ -117,12 +245,17 @@ export class AuthService {
         throw new UnauthorizedException('Invalid phone number or password');
       }
     } else {
+      if (!dto.name) {
+        throw new BadRequestException(
+          'A name is required to create a new account',
+        );
+      }
       const passwordHash = await bcrypt.hash(
         dto.password,
         PASSWORD_SALT_ROUNDS,
       );
       account = await this.prisma.account.create({
-        data: { phoneNumber: dto.phoneNumber, passwordHash },
+        data: { phoneNumber: dto.phoneNumber, passwordHash, name: dto.name },
       });
     }
     const accountId = account.id;
@@ -133,9 +266,7 @@ export class AuthService {
     const existingMemberships = await this.prisma.withAccount(accountId, (tx) =>
       tx.member.findMany({ where: { accountId } }),
     );
-    if (
-      existingMemberships.some((m) => m.organisationId === dto.organisationId)
-    ) {
+    if (existingMemberships.some((m) => m.organisationId === organisationId)) {
       throw new ConflictException(
         'This account is already a member of that organisation',
       );
@@ -166,66 +297,63 @@ export class AuthService {
       }
     }
 
-    const member = await this.prisma.withTenant(
-      dto.organisationId,
-      async (tx) => {
-        const organisation = await tx.organisation.findUnique({
-          where: { id: dto.organisationId },
-        });
-        if (!organisation) {
-          throw new NotFoundException('Organisation not found');
-        }
+    const member = await this.prisma.withTenant(organisationId, async (tx) => {
+      const organisation = await tx.organisation.findUnique({
+        where: { id: organisationId },
+      });
+      if (!organisation) {
+        throw new NotFoundException('Organisation not found');
+      }
 
-        const created = await tx.member.create({
-          data: { accountId, organisationId: dto.organisationId },
-        });
-        await tx.memberStatusChange.create({
+      const created = await tx.member.create({
+        data: { accountId, organisationId },
+      });
+      await tx.memberStatusChange.create({
+        data: {
+          memberId: created.id,
+          organisationId,
+          fromStatus: null,
+          toStatus: created.status,
+          reason: 'Joined organisation (FR-MEM-09)',
+        },
+      });
+
+      // FR-MEM-10: prefill dependants from the account's other
+      // memberships, but unconfirmed — each needs explicit re-confirmation
+      // before this org's claims can treat it as pre-registered.
+      for (const dependant of prefillDependants) {
+        await tx.dependant.create({
           data: {
             memberId: created.id,
-            organisationId: dto.organisationId,
-            fromStatus: null,
-            toStatus: created.status,
-            reason: 'Joined organisation (FR-MEM-09)',
+            organisationId,
+            relationship: dependant.relationship,
+            name: dependant.name,
+            confirmed: false,
           },
         });
+      }
 
-        // FR-MEM-10: prefill dependants from the account's other
-        // memberships, but unconfirmed — each needs explicit re-confirmation
-        // before this org's claims can treat it as pre-registered.
-        for (const dependant of prefillDependants) {
-          await tx.dependant.create({
-            data: {
-              memberId: created.id,
-              organisationId: dto.organisationId,
-              relationship: dependant.relationship,
-              name: dependant.name,
-              confirmed: false,
-            },
-          });
-        }
+      // The starter templates were already seeded when this org was
+      // created (registerOrganisation), so joining just looks up the
+      // existing "Member" template rather than reseeding anything.
+      const memberRole = await tx.role.findFirst({
+        where: {
+          organisationId,
+          name: 'Member',
+          isTemplate: true,
+        },
+      });
+      if (memberRole) {
+        await this.rbac.assignRoleInTx(
+          tx,
+          organisationId,
+          created.id,
+          memberRole.id,
+        );
+      }
 
-        // The starter templates were already seeded when this org was
-        // created (registerOrganisation), so joining just looks up the
-        // existing "Member" template rather than reseeding anything.
-        const memberRole = await tx.role.findFirst({
-          where: {
-            organisationId: dto.organisationId,
-            name: 'Member',
-            isTemplate: true,
-          },
-        });
-        if (memberRole) {
-          await this.rbac.assignRoleInTx(
-            tx,
-            dto.organisationId,
-            created.id,
-            memberRole.id,
-          );
-        }
-
-        return created;
-      },
-    );
+      return created;
+    });
 
     return this.issueToken({
       accountId,

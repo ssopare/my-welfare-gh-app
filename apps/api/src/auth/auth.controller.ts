@@ -10,6 +10,7 @@ import {
 import { AuthService } from './auth.service';
 import type { AuthTokenPayload } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
+import { CreateAdditionalOrganisationDto } from './dto/create-additional-organisation.dto';
 import { JoinOrganisationDto } from './dto/join-organisation.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterOrganisationDto } from './dto/register-organisation.dto';
@@ -22,6 +23,19 @@ export class AuthController {
   @Post('register-organisation')
   registerOrganisation(@Body() dto: RegisterOrganisationDto) {
     return this.authService.registerOrganisation(dto);
+  }
+
+  // An already-logged-in account founding a *second* organisation — see
+  // AuthService.createAdditionalOrganisation. Authenticated, unlike
+  // register-organisation above, since it reuses the caller's existing
+  // Account rather than creating one.
+  @Post('organisations')
+  @UseGuards(JwtAuthGuard)
+  createAdditionalOrganisation(
+    @CurrentUser() user: AuthTokenPayload,
+    @Body() dto: CreateAdditionalOrganisationDto,
+  ) {
+    return this.authService.createAdditionalOrganisation(user, dto);
   }
 
   @Post('join-organisation')

@@ -11,6 +11,13 @@ export class RegisterOrganisationDto {
   @MinLength(8)
   password!: string;
 
+  // Account-level identity (not per-membership) — carries through every
+  // org this Account later joins. Always required here since
+  // register-organisation always creates a brand-new Account.
+  @IsString()
+  @MinLength(1)
+  name!: string;
+
   @IsString()
   @MinLength(2)
   legalName!: string;

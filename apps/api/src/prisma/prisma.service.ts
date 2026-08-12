@@ -109,6 +109,26 @@ export class PrismaService
   }
 
   /**
+   * Runs `fn` with `app.system_context` set to `'join_lookup'` — the
+   * `join_code_lookup_read` RLS policy on organisations reads it, letting
+   * AuthService.joinOrganisation resolve a member-supplied joinCode to the
+   * real organisationId before it can open a normal withTenant() context
+   * (chicken-and-egg: withTenant needs the id, but a joinCode lookup has
+   * no id yet). Unlike withSystemContext (scheduler-only, never
+   * HTTP-reachable), this genuinely is reachable from an unauthenticated
+   * request — see the organisation_join_code migration's own comment for
+   * why that's safe. Only ever used to read the `id` column.
+   */
+  async withJoinCodeLookupContext<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.system_context', 'join_lookup', true)`;
+      return fn(tx);
+    });
+  }
+
+  /**
    * Tenant onboarding (§8.1): creates a brand-new Organisation. The id is
    * generated here, client-side, specifically so it can be passed to
    * withTenant() *before* the row exists — the organisations RLS policy

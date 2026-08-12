@@ -31,6 +31,7 @@ interface SubscriptionResponse {
   planId: string | null;
   trialEndsAt: string;
   currentPeriodEnd: string | null;
+  organisation?: { legalName: string } | null;
 }
 
 interface NotificationResponse {
@@ -126,6 +127,7 @@ describe('Subscription billing (e2e)', () => {
         password: 'correct-horse-battery-staple',
         legalName,
         organisationType: 'voluntary',
+        name: 'Test Admin',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -197,6 +199,7 @@ describe('Subscription billing (e2e)', () => {
         phoneNumber: uniquePhone(),
         password: 'correct-horse-battery-staple',
         organisationId: admin.identity.organisationId,
+        name: 'Test Member',
       })
       .expect(201);
     createdAccountIds.push(
@@ -347,11 +350,21 @@ describe('Subscription billing (e2e)', () => {
       .get('/platform/subscriptions')
       .set('Authorization', `Bearer ${operator.accessToken}`)
       .expect(200);
-    const orgIds = (res.body as SubscriptionResponse[]).map(
-      (s) => s.organisationId,
-    );
+    const rows = res.body as SubscriptionResponse[];
+    const orgIds = rows.map((s) => s.organisationId);
     expect(orgIds).toContain(orgA.identity.organisationId);
     expect(orgIds).toContain(orgB.identity.organisationId);
+
+    // The organisation join actually resolves, not just the FK id — the
+    // organisations table has its own RLS policy (tenant_isolation, keyed
+    // on app.tenant_id, which withPlatformOperatorContext never sets), so
+    // this join silently returned null on every row until the
+    // organisations_platform_operator_policy migration added a read
+    // bypass for this context specifically.
+    const rowA = rows.find(
+      (s) => s.organisationId === orgA.identity.organisationId,
+    );
+    expect(rowA?.organisation?.legalName).toBe('Subscription Cross Org A');
 
     // A tenant Member's token is not a platform operator token.
     await request(app.getHttpServer())
@@ -370,6 +383,24 @@ describe('Subscription billing (e2e)', () => {
       .get('/subscription')
       .set('Authorization', `Bearer ${operator.accessToken}`)
       .expect(403);
+  });
+
+  it("returns the operator's own identity from a valid token, rejects a tenant token", async () => {
+    const operator = await createPlatformOperator();
+    const tenant = await registerOrganisation('Platform Me Org');
+
+    const res = await request(app.getHttpServer())
+      .get('/platform/auth/me')
+      .set('Authorization', `Bearer ${operator.accessToken}`)
+      .expect(200);
+    expect((res.body as { id: string; email: string }).id).toBe(
+      operator.operatorId,
+    );
+
+    await request(app.getHttpServer())
+      .get('/platform/auth/me')
+      .set('Authorization', `Bearer ${tenant.accessToken}`)
+      .expect(401);
   });
 
   it('the daily sweep auto-suspends an expired trial and notifies the org admin', async () => {

@@ -20,6 +20,10 @@ export class ChangeStatusDto {
   @IsIn(MEMBER_STATUSES)
   status!: MemberStatusValue;
 
+  // Reason stays optional at the shape-validation level for every status —
+  // MembershipService.changeStatus enforces it as mandatory specifically
+  // for EXITED, since that's a business rule about *removal*, not a
+  // property-shape concern.
   @IsOptional()
   @IsString()
   reason?: string;

@@ -38,6 +38,12 @@ export class CreateContributionPlanDto {
   @IsIn(['push', 'payroll'])
   collectionMechanism?: string;
 
+  // Which Fund a payment against this plan should default to — see the
+  // schema comment on ContributionPlan.defaultFundId.
+  @IsOptional()
+  @IsUUID()
+  defaultFundId?: string;
+
   @IsOptional()
   @IsInt()
   @Min(0)

@@ -1,8 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { requireAdmin, requireSelfOrAdmin } from '../common/access.util';
-import { ObligationService } from '../ledger/obligation.service';
+import { OPEN_STATUSES, ObligationService } from '../ledger/obligation.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
 import { InitiateContributionPaymentDto } from './dto/initiate-contribution-payment.dto';
@@ -29,6 +34,58 @@ export class PaymentService {
     await requireSelfOrAdmin(this.rbac, actor, dto.memberId);
 
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
+      // Only a fail-fast, policy-consistency check here — whether the
+      // selected ids are still genuinely open for this member is
+      // authoritatively re-checked at confirmation time by
+      // recordContributionPaymentInTx, since a real payment is
+      // asynchronous and the member's obligations could change in the
+      // meantime (e.g. another payment settling one first). The rules
+      // themselves have to match recordContributionPaymentInTx's exactly
+      // — this used to be a stricter, independently-drifted copy (always
+      // required a selection under member_selected regardless of whether
+      // there was anything to select, and always forbade one under
+      // oldest_first) that caused a real payment to be wrongly rejected;
+      // see that method's own comments for why selecting which
+      // contribution *types* to pay is policy-independent now.
+      const organisation = await tx.organisation.findUnique({
+        where: { id: actor.organisationId },
+      });
+      const openObligations = await tx.obligation.findMany({
+        where: { memberId: dto.memberId, status: { in: [...OPEN_STATUSES] } },
+        include: { contributionPlan: true },
+      });
+      const monthlyIds = new Set(
+        openObligations
+          .filter((o) => o.contributionPlan.cadence === 'monthly')
+          .map((o) => o.id),
+      );
+      const otherObligationsCount = openObligations.filter(
+        (o) => o.contributionPlan.cadence !== 'monthly',
+      ).length;
+
+      if ((dto.obligationIds ?? []).some((id) => monthlyIds.has(id))) {
+        throw new BadRequestException(
+          'Monthly contributions are applied automatically and cannot be individually selected',
+        );
+      }
+      if (
+        organisation?.paymentAllocationPolicy === 'member_selected' &&
+        otherObligationsCount > 0 &&
+        !dto.obligationIds?.length
+      ) {
+        throw new BadRequestException(
+          'This organisation requires selecting which obligations a payment covers',
+        );
+      }
+
+      const member = await tx.member.findUnique({
+        where: { id: dto.memberId },
+        include: { account: { select: { phoneNumber: true } } },
+      });
+      if (!member) {
+        throw new NotFoundException('Member not found');
+      }
+
       // Placeholder, globally unique, satisfies the not-null unique
       // constraint until the provider assigns its own reference below —
       // providers issue their own transaction ids, so this can't be known
@@ -41,25 +98,34 @@ export class PaymentService {
           channel: dto.channel,
           amountValue: dto.amountValue,
           currency: dto.currency,
+          obligationIds: dto.obligationIds ?? [],
           providerReference: `pending_${randomUUID()}`,
         },
       });
 
-      const { providerReference } = await this.provider.initiatePayment({
-        organisationId: actor.organisationId,
-        amountValue: dto.amountValue,
-        currency: dto.currency,
-        channel: dto.channel,
-        metadata: {
+      const { providerReference, displayText } =
+        await this.provider.initiatePayment({
           organisationId: actor.organisationId,
-          reference: intent.id,
-        },
-      });
+          amountValue: dto.amountValue,
+          currency: dto.currency,
+          channel: dto.channel,
+          phoneNumber: member.account.phoneNumber,
+          momoProvider: dto.momoProvider,
+          metadata: {
+            organisationId: actor.organisationId,
+            reference: intent.id,
+          },
+        });
 
-      return tx.paymentIntent.update({
+      const updated = await tx.paymentIntent.update({
         where: { id: intent.id },
         data: { providerReference },
       });
+
+      // displayText (e.g. Paystack's MoMo "please dial *170#..." prompt)
+      // is presentational only — shown once here, never persisted on the
+      // PaymentIntent row itself.
+      return { ...updated, displayText };
     });
   }
 
@@ -128,6 +194,9 @@ export class PaymentService {
             amountValue: intent.amountValue.toString(),
             currency: intent.currency,
             reference: intent.providerReference,
+            obligationIds: intent.obligationIds.length
+              ? intent.obligationIds
+              : undefined,
           },
         );
 
@@ -165,6 +234,45 @@ export class PaymentService {
     );
     await requireSelfOrAdmin(this.rbac, actor, intent.memberId);
     return intent;
+  }
+
+  // Deliberately the one endpoint in this whole app visible to any
+  // authenticated member of the org, not gated by requireSelfOrAdmin or
+  // requireAdmin — reproducing the real practice this feature is modeled
+  // on (a welfare group posting contribution payments to its WhatsApp
+  // chat as they land, so everyone can see who's current). Sourced from
+  // JournalLine, not Obligation.amountPaid/status: the ledger is this
+  // system's actual append-only record of when money moved, whereas
+  // amountPaid/status are mutable running totals that collapse multiple
+  // partial payments into one final number, losing the individual
+  // payment events a feed needs. Capped at 100 — a feed, not a full
+  // historical export (Reporting already covers that, admin-only).
+  async listActivity(actor: AuthTokenPayload) {
+    return this.prisma.withTenant(actor.organisationId, (tx) =>
+      tx.journalLine.findMany({
+        where: {
+          obligationId: { not: null },
+          ledgerAccount: { name: 'Contributions Income' },
+        },
+        select: {
+          credit: true,
+          journalEntry: { select: { postedAt: true } },
+          obligation: {
+            select: {
+              dueDate: true,
+              contributionPlan: { select: { name: true, cadence: true } },
+              member: {
+                select: {
+                  account: { select: { name: true, phoneNumber: true } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { journalEntry: { postedAt: 'desc' } },
+        take: 100,
+      }),
+    );
   }
 
   async listReconciliationExceptions(actor: AuthTokenPayload) {

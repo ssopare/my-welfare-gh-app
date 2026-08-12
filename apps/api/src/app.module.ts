@@ -9,6 +9,7 @@ import { GovernanceModule } from './governance/governance.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { MembershipModule } from './membership/membership.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { OrganisationModule } from './organisation/organisation.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PlatformAuthModule } from './platform-auth/platform-auth.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -34,6 +35,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     NotificationsModule,
     PlatformAuthModule,
     SubscriptionsModule,
+    OrganisationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

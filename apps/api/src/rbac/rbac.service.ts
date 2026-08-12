@@ -275,6 +275,36 @@ export class RbacService {
     });
   }
 
+  // The reverse of listForMember: "who currently holds this role," for the
+  // admin console's Roles & Access screen. Surfaced building it — every
+  // prior read was either "list every role" or "list one member's
+  // assignments," nothing could show a role's own holders without already
+  // knowing every member id to check individually.
+  async listAssignmentsForRole(actor: AuthTokenPayload, roleId: string) {
+    if (
+      !(await this.hasWildcardAdminPermission(
+        actor.organisationId,
+        actor.memberId,
+      ))
+    ) {
+      throw new ForbiddenException('Only an organisation admin can do this');
+    }
+    return this.prisma.withTenant(actor.organisationId, async (tx) => {
+      const role = await tx.role.findUnique({ where: { id: roleId } });
+      if (!role) {
+        throw new NotFoundException('Role not found');
+      }
+      return tx.roleAssignment.findMany({
+        where: { roleId },
+        include: {
+          member: { include: { account: { select: { phoneNumber: true } } } },
+          chapter: true,
+        },
+        orderBy: { termStart: 'desc' },
+      });
+    });
+  }
+
   async listForMember(actor: AuthTokenPayload, memberId: string) {
     if (
       actor.memberId !== memberId &&

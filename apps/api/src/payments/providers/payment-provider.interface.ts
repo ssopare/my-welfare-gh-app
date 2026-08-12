@@ -9,10 +9,21 @@ export interface InitiatePaymentParams {
   // needing any cross-tenant lookup. reference is our own idempotency
   // handle (PaymentIntent.id), also echoed back.
   metadata: { organisationId: string; reference: string };
+  // Only meaningful for MOBILE_MONEY — Paystack's Charge API needs the
+  // paying member's phone and which network to prompt on. Ignored by
+  // providers that don't need them (MockPaymentProvider, any future
+  // CARD/BANK_TRANSFER implementation).
+  phoneNumber: string;
+  momoProvider?: 'mtn' | 'vod' | 'atl';
 }
 
 export interface InitiatePaymentResult {
   providerReference: string;
+  // Some channels (MoMo in particular) need the payer to complete an
+  // action outside our own UI — e.g. Paystack's MoMo charge returns a
+  // display_text like "Please dial *170# and approve" — surfaced once at
+  // initiate time, not persisted (see PaymentService.initiateContributionPayment).
+  displayText?: string;
 }
 
 // Real Paystack/Flutterwave/Hubtel integrations implement this same shape

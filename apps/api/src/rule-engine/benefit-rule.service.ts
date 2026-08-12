@@ -130,4 +130,28 @@ export class BenefitRuleService {
       }),
     );
   }
+
+  // Admin-only management view — see ContributionPlanService.listAll for
+  // why listActive alone can't support the create -> activate/reject
+  // workflow the admin console needs.
+  async listAll(actor: AuthTokenPayload) {
+    await requireAdmin(this.rbac, actor);
+    return this.prisma.withTenant(actor.organisationId, (tx) =>
+      tx.benefitRule.findMany({ orderBy: { createdAt: 'desc' } }),
+    );
+  }
+
+  // Single-rule lookup for the admin console's rule detail/live eligibility
+  // preview screen — see ContributionPlanService.get for why this didn't
+  // already exist.
+  async get(actor: AuthTokenPayload, id: string) {
+    await requireAdmin(this.rbac, actor);
+    return this.prisma.withTenant(actor.organisationId, async (tx) => {
+      const rule = await tx.benefitRule.findUnique({ where: { id } });
+      if (!rule) {
+        throw new NotFoundException('Benefit rule not found');
+      }
+      return rule;
+    });
+  }
 }

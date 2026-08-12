@@ -1,4 +1,6 @@
 import {
+  ArrayMinSize,
+  IsArray,
   IsNumberString,
   IsOptional,
   IsString,
@@ -29,4 +31,15 @@ export class RecordContributionPaymentDto {
   @IsOptional()
   @IsString()
   reference?: string;
+
+  // Only meaningful (and required) when the org's paymentAllocationPolicy
+  // is 'member_selected' — which specific open obligations this payment
+  // should cover, rather than the default oldest-due-first sweep across
+  // everything open. See recordContributionPaymentInTx for the validation
+  // and allocation logic.
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  obligationIds?: string[];
 }

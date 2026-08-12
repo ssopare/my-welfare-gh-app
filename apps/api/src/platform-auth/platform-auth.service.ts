@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
@@ -38,5 +42,15 @@ export class PlatformAuthService {
       type: 'platform_operator',
     };
     return { accessToken: this.jwt.sign(payload) };
+  }
+
+  async me(operatorId: string) {
+    const operator = await this.prisma.platformOperator.findUnique({
+      where: { id: operatorId },
+    });
+    if (!operator) {
+      throw new NotFoundException('Platform operator not found');
+    }
+    return { id: operator.id, email: operator.email };
   }
 }

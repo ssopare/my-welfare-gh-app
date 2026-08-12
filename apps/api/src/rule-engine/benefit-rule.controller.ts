@@ -57,6 +57,16 @@ export class BenefitRuleController {
     return this.rules.listActive(user, asOf ? new Date(asOf) : new Date());
   }
 
+  @Get('all')
+  listAll(@CurrentUser() user: AuthTokenPayload) {
+    return this.rules.listAll(user);
+  }
+
+  @Get(':id')
+  get(@CurrentUser() user: AuthTokenPayload, @Param('id') id: string) {
+    return this.rules.get(user, id);
+  }
+
   @Post(':id/evaluate-eligibility')
   async evaluateEligibility(
     @CurrentUser() user: AuthTokenPayload,

@@ -112,6 +112,7 @@ describe('Governance (e2e)', () => {
         password: 'correct-horse-battery-staple',
         legalName,
         organisationType: 'voluntary',
+        name: 'Test Admin',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -139,6 +140,7 @@ describe('Governance (e2e)', () => {
         phoneNumber: uniquePhone(),
         password: 'correct-horse-battery-staple',
         organisationId,
+        name: 'Test Member',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -151,11 +153,12 @@ describe('Governance (e2e)', () => {
     adminToken: string,
     memberId: string,
     status: string,
+    reason?: string,
   ) {
     await request(app.getHttpServer())
       .patch(`/members/${memberId}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ status })
+      .send({ status, reason })
       .expect(200);
   }
 
@@ -327,7 +330,12 @@ describe('Governance (e2e)', () => {
       .send({ memberId: officer.identity.memberId, roleId: role.id })
       .expect(201);
 
-    await setStatus(admin.accessToken, officer.identity.memberId, 'EXITED');
+    await setStatus(
+      admin.accessToken,
+      officer.identity.memberId,
+      'EXITED',
+      'Left the organisation',
+    );
 
     const officersRes = await request(app.getHttpServer())
       .get(`/governance-bodies/${body.id}/officers`)

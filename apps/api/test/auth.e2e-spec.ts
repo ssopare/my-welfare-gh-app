@@ -75,10 +75,11 @@ describe('Auth (e2e)', () => {
     password: string;
     legalName: string;
     organisationType: string;
+    name?: string;
   }): Promise<AccessTokenResponse> {
     const res = await request(app.getHttpServer())
       .post('/auth/register-organisation')
-      .send(payload)
+      .send({ name: 'Test Admin', ...payload })
       .expect(201);
     return res.body as AccessTokenResponse;
   }
@@ -119,6 +120,7 @@ describe('Auth (e2e)', () => {
       password: 'correct-horse-battery-staple',
       legalName: 'Duplicate Phone Org',
       organisationType: 'voluntary',
+      name: 'Test Admin',
     };
 
     const { accessToken } = await registerOrganisation(payload);
@@ -138,6 +140,7 @@ describe('Auth (e2e)', () => {
         password: 'correct-horse-battery-staple',
         legalName: 'Bad Type Org',
         organisationType: 'not-a-real-type',
+        name: 'Test Admin',
       })
       .expect(400);
   });
@@ -223,6 +226,7 @@ describe('Auth (e2e)', () => {
     const secondOrg = await prisma.provisionOrganisation({
       legalName: 'Multi-org Second Org',
       type: 'voluntary',
+      joinCode: `MULTI-${Date.now()}`,
     });
     await prisma.withTenant(secondOrg.id, (tx) =>
       tx.member.create({
@@ -250,5 +254,141 @@ describe('Auth (e2e)', () => {
     );
     expect(disambiguatedIdentity.organisationId).toBe(secondOrg.id);
     expect(disambiguatedIdentity.role).toBe('MEMBER');
+  });
+
+  it('an existing admin can found a second organisation and becomes its admin, independent of the first', async () => {
+    const phoneNumber = uniquePhone();
+    const password = 'correct-horse-battery-staple';
+    const registered = await registerOrganisation({
+      phoneNumber,
+      password,
+      legalName: 'Founder Home Org',
+      organisationType: 'voluntary',
+    });
+    const firstIdentity = await me(registered.accessToken);
+    createdAccountIds.push(firstIdentity.sub);
+    createdOrgIds.push(firstIdentity.organisationId);
+
+    const res = await request(app.getHttpServer())
+      .post('/auth/organisations')
+      .set('Authorization', `Bearer ${registered.accessToken}`)
+      .send({ legalName: 'Founder Second Org', organisationType: 'employer-linked' })
+      .expect(201);
+    const { accessToken: secondToken } = res.body as AccessTokenResponse;
+
+    const secondIdentity = await me(secondToken);
+    expect(secondIdentity.sub).toBe(firstIdentity.sub);
+    expect(secondIdentity.organisationId).not.toBe(firstIdentity.organisationId);
+    expect(secondIdentity.role).toBe('ADMIN');
+    createdOrgIds.push(secondIdentity.organisationId);
+
+    // The original membership is untouched — same account, two fully
+    // independent ADMIN memberships.
+    const firstIdentityAgain = await me(registered.accessToken);
+    expect(firstIdentityAgain.organisationId).toBe(firstIdentity.organisationId);
+    expect(firstIdentityAgain.role).toBe('ADMIN');
+  });
+
+  it('an ordinary member (admin nowhere) can found a brand-new organisation and becomes its admin there', async () => {
+    const founder = await registerOrganisation({
+      phoneNumber: uniquePhone(),
+      password: 'correct-horse-battery-staple',
+      legalName: 'Member Founder Home Org',
+      organisationType: 'voluntary',
+    });
+    const founderIdentity = await me(founder.accessToken);
+    createdAccountIds.push(founderIdentity.sub);
+    createdOrgIds.push(founderIdentity.organisationId);
+
+    const memberPhone = uniquePhone();
+    const memberPassword = 'correct-horse-battery-staple';
+    const joinRes = await request(app.getHttpServer())
+      .post('/auth/join-organisation')
+      .send({
+        organisationId: founderIdentity.organisationId,
+        phoneNumber: memberPhone,
+        password: memberPassword,
+        name: 'Ordinary Member',
+      })
+      .expect(201);
+    const memberToken = (joinRes.body as AccessTokenResponse).accessToken;
+    const memberIdentity = await me(memberToken);
+    expect(memberIdentity.role).toBe('MEMBER');
+    createdAccountIds.push(memberIdentity.sub);
+    createdOrgIds.push(memberIdentity.organisationId);
+
+    const res = await request(app.getHttpServer())
+      .post('/auth/organisations')
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ legalName: 'Member-Founded Org', organisationType: 'voluntary' })
+      .expect(201);
+    const newOrgIdentity = await me((res.body as AccessTokenResponse).accessToken);
+    expect(newOrgIdentity.sub).toBe(memberIdentity.sub);
+    expect(newOrgIdentity.role).toBe('ADMIN');
+    expect(newOrgIdentity.organisationId).not.toBe(memberIdentity.organisationId);
+    createdOrgIds.push(newOrgIdentity.organisationId);
+
+    // Their original MEMBER membership is untouched by founding a new org.
+    const memberIdentityAgain = await me(memberToken);
+    expect(memberIdentityAgain.role).toBe('MEMBER');
+    expect(memberIdentityAgain.organisationId).toBe(founderIdentity.organisationId);
+  });
+
+  it('rejects founding an additional organisation with no token, and with an invalid type', async () => {
+    await request(app.getHttpServer())
+      .post('/auth/organisations')
+      .send({ legalName: 'No Token Org', organisationType: 'voluntary' })
+      .expect(401);
+
+    const registered = await registerOrganisation({
+      phoneNumber: uniquePhone(),
+      password: 'correct-horse-battery-staple',
+      legalName: 'Bad Second Org Type Home',
+      organisationType: 'voluntary',
+    });
+    trackForCleanup(await me(registered.accessToken));
+
+    await request(app.getHttpServer())
+      .post('/auth/organisations')
+      .set('Authorization', `Bearer ${registered.accessToken}`)
+      .send({ legalName: 'Bad Type', organisationType: 'not-a-real-type' })
+      .expect(400);
+  });
+
+  it("returns the caller's own organisation, isolated per tenant", async () => {
+    const orgA = await registerOrganisation({
+      phoneNumber: uniquePhone(),
+      password: 'correct-horse-battery-staple',
+      legalName: 'Organisation Lookup Org A',
+      organisationType: 'voluntary',
+    });
+    const orgB = await registerOrganisation({
+      phoneNumber: uniquePhone(),
+      password: 'correct-horse-battery-staple',
+      legalName: 'Organisation Lookup Org B',
+      organisationType: 'employer-linked',
+    });
+    const identityA = await me(orgA.accessToken);
+    const identityB = await me(orgB.accessToken);
+    trackForCleanup(identityA);
+    trackForCleanup(identityB);
+
+    const resA = await request(app.getHttpServer())
+      .get('/organisation')
+      .set('Authorization', `Bearer ${orgA.accessToken}`)
+      .expect(200);
+    expect((resA.body as { legalName: string }).legalName).toBe(
+      'Organisation Lookup Org A',
+    );
+
+    const resB = await request(app.getHttpServer())
+      .get('/organisation')
+      .set('Authorization', `Bearer ${orgB.accessToken}`)
+      .expect(200);
+    expect((resB.body as { legalName: string }).legalName).toBe(
+      'Organisation Lookup Org B',
+    );
+
+    await request(app.getHttpServer()).get('/organisation').expect(401);
   });
 });

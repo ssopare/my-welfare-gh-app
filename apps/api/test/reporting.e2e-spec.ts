@@ -66,13 +66,25 @@ interface DefaulterRegisterRow {
   contributionPlanId: string;
   consecutiveMissedCount: number;
   arrearsOwed: string;
+  agingBuckets: {
+    days0To30: string;
+    days31To60: string;
+    days61To90: string;
+    days90Plus: string;
+  };
 }
 
 interface DisbursementReportRow {
   claimId: string;
   memberId: string;
+  phoneNumber: string;
   amountValue: string;
-  approverTrail: { stageName: string; decision: string }[];
+  approverTrail: {
+    stageName: string;
+    decision: string;
+    actorMemberId: string;
+    actorPhoneNumber?: string;
+  }[];
 }
 
 // Phase 1 roadmap slice 9: Reporting (§16), Phase 1 scope only per the
@@ -189,6 +201,7 @@ describe('Reporting (e2e)', () => {
         password: 'correct-horse-battery-staple',
         legalName,
         organisationType: 'voluntary',
+        name: 'Test Admin',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -216,6 +229,7 @@ describe('Reporting (e2e)', () => {
         phoneNumber: uniquePhone(),
         password: 'correct-horse-battery-staple',
         organisationId,
+        name: 'Test Member',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -376,6 +390,125 @@ describe('Reporting (e2e)', () => {
     expect(rows[0].outstandingTotal).toBe('20');
   });
 
+  it('fund position trend returns 6 month-end running balances, ending with the current cash total', async () => {
+    const admin = await registerOrganisation('Report Fund Trend Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    const plan = await createActivePlan(admin.accessToken);
+    const fund = await createFund(admin.accessToken);
+
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(10),
+    );
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    // Cross-checked against the already-tested balance endpoint, not just
+    // this new one's own arithmetic.
+    const cashAccount = fund.ledgerAccounts.find((a) => a.name === 'Cash');
+    const balanceRes = await request(app.getHttpServer())
+      .get(`/ledger-accounts/${cashAccount?.id}/balance`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const currentCashBalance = (balanceRes.body as { balance: string }).balance;
+
+    const trendRes = await request(app.getHttpServer())
+      .get('/reports/fund-position-trend')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const trend = trendRes.body as { month: string; balance: string }[];
+    expect(trend).toHaveLength(6);
+    // Earliest month, well before this org existed, has nothing posted.
+    expect(trend[0].balance).toBe('0');
+    // The current month reflects everything posted so far.
+    expect(trend[5].balance).toBe(currentCashBalance);
+  });
+
+  it('contributions vs. claims returns 6 real monthly totals, current month reflecting both a payment and a disbursement', async () => {
+    const admin = await registerOrganisation('Report Contrib Vs Claims Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const approver = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    await grantTreasurer(admin.accessToken, approver.identity.memberId);
+    const plan = await createActivePlan(admin.accessToken);
+    const fund = await createFund(admin.accessToken);
+
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(10),
+    );
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    const ruleRes = await request(app.getHttpServer())
+      .post('/benefit-rules')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Bereavement Benefit',
+        triggerEvent: 'member.death',
+        subjectTypes: ['self'],
+        amountValue: '75.00',
+        currency: 'GHS',
+        occurrenceCapMax: 1,
+        approvalChain: ['treasurer_disburse'],
+      })
+      .expect(201);
+    const rule = ruleRes.body as RuleResponse;
+    await request(app.getHttpServer())
+      .post(`/benefit-rules/${rule.id}/activate`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({})
+      .expect(201);
+    const claimRes = await request(app.getHttpServer())
+      .post(`/benefit-rules/${rule.id}/claims`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({ memberId: member.identity.memberId, eventDate: new Date().toISOString() })
+      .expect(201);
+    const claim = claimRes.body as { id: string };
+    await request(app.getHttpServer())
+      .post(`/claims/${claim.id}/decide`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ decision: 'APPROVE' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/claims/${claim.id}/disburse`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ fundId: fund.id })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get('/reports/contributions-vs-claims')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const rows = res.body as { month: string; contributions: string; claimsPaid: string }[];
+    expect(rows).toHaveLength(6);
+    // Earliest month, well before this org existed, has nothing posted.
+    expect(rows[0].contributions).toBe('0');
+    expect(rows[0].claimsPaid).toBe('0');
+    // The current month reflects both the payment and the disbursement.
+    expect(rows[5].contributions).toBe('20');
+    expect(rows[5].claimsPaid).toBe('75');
+
+    // An ordinary member without ledger:view cannot read this report.
+    await request(app.getHttpServer())
+      .get('/reports/contributions-vs-claims')
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(403);
+  });
+
   it("a member's statement shows payment history, claims, and a paid-through date that stops at the first gap", async () => {
     const admin = await registerOrganisation('Report Statement Org');
     const member = await joinOrganisation(admin.identity.organisationId);
@@ -473,6 +606,14 @@ describe('Reporting (e2e)', () => {
     expect(row?.status).toBe('DEFAULTER');
     expect(row?.consecutiveMissedCount).toBe(2);
     expect(row?.arrearsOwed).toBe('40');
+    // One obligation ~60 days overdue, one ~30 days overdue — aging split
+    // across the 0-30 and 31-60 buckets, nothing in the deeper ones.
+    expect(row?.agingBuckets).toEqual({
+      days0To30: '20',
+      days31To60: '20',
+      days61To90: '0',
+      days90Plus: '0',
+    });
   });
 
   it('the disbursement report lists a PAID claim with its amount and approver trail', async () => {
@@ -532,12 +673,15 @@ describe('Reporting (e2e)', () => {
     const row = rows.find((r) => r.claimId === claim.id);
     expect(row).toBeDefined();
     expect(row?.memberId).toBe(member.identity.memberId);
+    expect(row?.phoneNumber).toBeTruthy();
     expect(row?.amountValue).toBe('500');
     expect(row?.approverTrail).toHaveLength(1);
     expect(row?.approverTrail[0]).toMatchObject({
       stageName: 'treasurer_disburse',
       decision: 'APPROVE',
+      actorMemberId: approver.identity.memberId,
     });
+    expect(typeof row?.approverTrail[0].actorPhoneNumber).toBe('string');
 
     // An ordinary member without ledger:view cannot read this report.
     await request(app.getHttpServer())

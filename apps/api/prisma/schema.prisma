@@ -23,6 +23,15 @@ model Account {
   id           String   @id @default(uuid())
   phoneNumber  String   @unique
   passwordHash String
+  // Identity-level, not per-Member — set once when the Account is first
+  // created (register-organisation or a first-time join-organisation) and
+  // carries through every org this Account later joins. Nullable at the
+  // DB level only to avoid a backfill migration for accounts that predate
+  // this field; application code treats it as required going forward
+  // (AuthService rejects account creation without one) and the mobile app
+  // hard-gates any pre-existing account without one behind a
+  // complete-your-profile screen before it can reach the rest of the app.
+  name         String?
   createdAt    DateTime @default(now())
 
   members Member[]
@@ -40,6 +49,14 @@ model Organisation {
   currency  String   @default("GHS")
   status    String   @default("trial")
   createdAt DateTime @default(now())
+
+  // A short, human-shareable alternative to the UUID above — generated at
+  // registration (see AuthService.registerOrganisation), so a member can
+  // actually be handed something readable to join with instead of a raw
+  // UUID typed by hand. The UUID id itself is still the real key
+  // everything else in the schema references; this is purely a friendly
+  // lookup alias, resolved to the real id at the start of joinOrganisation.
+  joinCode  String   @unique
 
   // FR-LEDGER-07: how an incoming payment is applied across a member's open
   // Obligations. Only 'oldest_first' is actually implemented by
@@ -142,12 +159,20 @@ model Member {
   joinDate       DateTime     @default(now())
   status         MemberStatus @default(PENDING)
   createdAt      DateTime     @default(now())
+  // A monthly-plan payment that overshoots the last obligation this
+  // service will auto-generate for (see ObligationService's
+  // MAX_MONTHLY_EXTENSION safety cap) parks the remainder here instead of
+  // being rejected — swept back in at the start of that member's next
+  // payment. Never touched for one-time/event plans, only the recurring
+  // monthly-waterfall path. See recordContributionPaymentInTx.
+  creditBalance  Decimal      @default(0) @db.Decimal(12, 2)
 
   account         Account              @relation(fields: [accountId], references: [id])
   organisation    Organisation         @relation(fields: [organisationId], references: [id])
   chapter         Chapter?             @relation(fields: [chapterId], references: [id])
   dependants      Dependant[]
   statusChanges   MemberStatusChange[]
+  removalRequests MemberRemovalRequest[]
   obligations     Obligation[]
   paymentIntents  PaymentIntent[]
   roleAssignments RoleAssignment[]
@@ -218,6 +243,13 @@ model ContributionPlan {
   amountValue                      Decimal    @db.Decimal(12, 2)
   currency                         String
   collectionMechanism              String     @default("push") // "push" | "payroll" (FR-LED-02)
+  // Which Fund a payment against this plan should default to, on either
+  // the admin's record-payment form or a member's own pay screen — so a
+  // routine monthly-dues payment isn't left to whichever fund happened to
+  // be selected (or first in the list), including a one-off collection
+  // fund it was never meant to land in. A suggestion the picker
+  // pre-selects, not a hard constraint — an admin can still override it.
+  defaultFundId                    String?
   // FR-LEDGER-06: "grace period" is at least four different things the
   // source constitutions conflate under one term. minTenureMonths above is
   // the *benefit* waiting period (a BenefitRule concern — UDS's 6-month
@@ -247,6 +279,7 @@ model ContributionPlan {
 
   organisation Organisation      @relation(fields: [organisationId], references: [id])
   chapter      Chapter?          @relation(fields: [chapterId], references: [id])
+  defaultFund  Fund?             @relation(fields: [defaultFundId], references: [id])
   supersedes   ContributionPlan? @relation("ContributionPlanVersions", fields: [supersedesId], references: [id])
   supersededBy ContributionPlan? @relation("ContributionPlanVersions")
   obligations  Obligation[]
@@ -306,10 +339,11 @@ model Fund {
   name           String
   createdAt      DateTime @default(now())
 
-  organisation   Organisation    @relation(fields: [organisationId], references: [id])
+  organisation   Organisation       @relation(fields: [organisationId], references: [id])
   ledgerAccounts LedgerAccount[]
   journalEntries JournalEntry[]
   paymentIntents PaymentIntent[]
+  defaultForPlans ContributionPlan[]
 
   @@index([organisationId])
   @@map("funds")
@@ -492,6 +526,12 @@ model PaymentIntent {
   channel           PaymentChannel
   amountValue       Decimal             @db.Decimal(12, 2)
   currency          String
+  // Only populated when the org's paymentAllocationPolicy is
+  // 'member_selected' — captured at initiate time so the choice survives
+  // until the webhook confirms the payment and actually posts it, since a
+  // real payment is asynchronous (see initiateContributionPayment). Empty
+  // for every 'oldest_first' org, which is still the default.
+  obligationIds     String[]            @default([])
   // Globally unique, not just per-tenant — this is the provider's own
   // transaction id, and providers don't know about our tenant boundaries.
   providerReference String              @unique
@@ -643,6 +683,11 @@ model MemberStatusChange {
   fromStatus     MemberStatus?
   toStatus       MemberStatus
   reason         String?
+  // The acting admin's Member id. No Prisma @relation (would be a second,
+  // ambiguous FK onto Member alongside `memberId`) — same reasoning as
+  // ClaimStageAction.actorMemberId. Nullable only because rows created
+  // before this field existed have no value to backfill.
+  changedBy      String?
   changedAt      DateTime      @default(now())
 
   member Member @relation(fields: [memberId], references: [id])
@@ -650,6 +695,38 @@ model MemberStatusChange {
   @@index([organisationId])
   @@index([memberId])
   @@map("member_status_changes")
+}
+
+// §13.1 maker-checker, extended to member removal: a status change *to*
+// EXITED, when the org has makerCheckerEnabled on, doesn't apply
+// immediately — it sits here until a *different* admin confirms it. Member.
+// status is untouched until CONFIRMED, so nothing else that reads
+// MemberStatus (rule engine, defaulter checks, governance vacancy logic)
+// needs to know this intermediate state exists at all.
+enum MemberRemovalRequestStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model MemberRemovalRequest {
+  id             String                      @id @default(uuid())
+  memberId       String
+  organisationId String
+  requestedBy    String
+  reason         String
+  status         MemberRemovalRequestStatus  @default(PENDING)
+  requestedAt    DateTime                    @default(now())
+  confirmedBy    String?
+  confirmedAt    DateTime?
+  cancelledBy    String?
+  cancelledAt    DateTime?
+
+  member Member @relation(fields: [memberId], references: [id])
+
+  @@index([organisationId])
+  @@index([memberId])
+  @@map("member_removal_requests")
 }
 
 // §8.6, FR-CLM-01 through FR-CLM-04/06 (FR-CLM-05's discretionary graded

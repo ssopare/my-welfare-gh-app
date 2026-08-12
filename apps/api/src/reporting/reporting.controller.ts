@@ -41,6 +41,16 @@ export class ReportingController {
     return this.reporting.defaulterRegister(user);
   }
 
+  @Get('reports/fund-position-trend')
+  fundPositionTrend(@CurrentUser() user: AuthTokenPayload) {
+    return this.reporting.fundPositionTrend(user);
+  }
+
+  @Get('reports/contributions-vs-claims')
+  contributionsVsClaims(@CurrentUser() user: AuthTokenPayload) {
+    return this.reporting.contributionsVsClaimsMonthly(user);
+  }
+
   @Get('reports/disbursements')
   disbursementReport(
     @CurrentUser() user: AuthTokenPayload,

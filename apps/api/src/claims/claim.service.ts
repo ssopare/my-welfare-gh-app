@@ -208,7 +208,11 @@ export class ClaimService {
     return this.prisma.withTenant(actor.organisationId, (tx) =>
       tx.claim.findMany({
         where: { memberId },
-        include: { evidence: true, stageActions: true },
+        include: {
+          evidence: true,
+          stageActions: true,
+          benefitRule: { select: { name: true, triggerEvent: true } },
+        },
         orderBy: { createdAt: 'desc' },
       }),
     );
@@ -216,13 +220,23 @@ export class ClaimService {
 
   // FR-CLM-04's two registers ("applications" vs "approved-and-paid") are
   // both just filtered views over this one list, not separate stores — the
-  // caller passes ?status= to pick one.
+  // caller passes ?status= to pick one. Includes member/benefitRule display
+  // fields (phoneNumber, rule name) — surfaced building the admin console:
+  // without them this returned bare memberId/benefitRuleId foreign keys,
+  // unusable for a claims register a human needs to read.
   async list(actor: AuthTokenPayload, status?: string) {
     await this.requireClaimVisibility(actor);
     return this.prisma.withTenant(actor.organisationId, (tx) =>
       tx.claim.findMany({
         where: status ? { status: status as never } : undefined,
-        include: { evidence: true, stageActions: true },
+        include: {
+          evidence: true,
+          stageActions: true,
+          member: {
+            include: { account: { select: { phoneNumber: true, name: true } } },
+          },
+          benefitRule: { select: { name: true, triggerEvent: true } },
+        },
         orderBy: { createdAt: 'desc' },
       }),
     );
@@ -436,7 +450,16 @@ export class ClaimService {
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       const claim = await tx.claim.findUnique({
         where: { id },
-        include: { evidence: true, stageActions: true, member: true },
+        include: {
+          evidence: true,
+          stageActions: true,
+          member: {
+            include: { account: { select: { phoneNumber: true, name: true } } },
+          },
+          benefitRule: {
+            select: { name: true, triggerEvent: true, approvalChain: true },
+          },
+        },
       });
       if (!claim) {
         throw new NotFoundException('Claim not found');

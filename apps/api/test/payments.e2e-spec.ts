@@ -155,6 +155,7 @@ describe('Payments (e2e)', () => {
         password: 'correct-horse-battery-staple',
         legalName,
         organisationType: 'voluntary',
+        name: 'Test Admin',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -182,6 +183,7 @@ describe('Payments (e2e)', () => {
         phoneNumber: uniquePhone(),
         password: 'correct-horse-battery-staple',
         organisationId,
+        name: 'Test Member',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -202,13 +204,14 @@ describe('Payments (e2e)', () => {
   async function createActivePlan(
     adminToken: string,
     amountValue: string,
+    cadence: string = 'monthly',
   ): Promise<RuleResponse> {
     const createRes = await request(app.getHttpServer())
       .post('/contribution-plans')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: 'Monthly Due',
-        cadence: 'monthly',
+        name: cadence === 'monthly' ? 'Monthly Due' : 'One-Time Contribution',
+        cadence,
         amountValue,
         currency: 'GHS',
       })
@@ -241,6 +244,7 @@ describe('Payments (e2e)', () => {
     memberId: string,
     fundId: string,
     amountValue: string,
+    obligationIds?: string[],
   ): Promise<PaymentIntentResponse> {
     const res = await request(app.getHttpServer())
       .post('/payments/contribution/initiate')
@@ -251,6 +255,7 @@ describe('Payments (e2e)', () => {
         amountValue,
         currency: 'GHS',
         channel: 'MOBILE_MONEY',
+        obligationIds,
       })
       .expect(201);
     return res.body as PaymentIntentResponse;
@@ -313,6 +318,59 @@ describe('Payments (e2e)', () => {
       (o) => o.id === obligation.id,
     );
     expect(updated?.status).toBe('PAID');
+  });
+
+  it('member_selected: the obligation choice made at initiate time survives to the webhook and is what actually gets paid', async () => {
+    const admin = await registerOrganisation('Payments Member Selected Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '15.00', 'one_time');
+    const older = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-06-01',
+    );
+    const chosen = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-07-01',
+    );
+
+    await request(app.getHttpServer())
+      .patch('/organisation')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ paymentAllocationPolicy: 'member_selected' })
+      .expect(200);
+
+    // Deliberately pays the newer one, skipping the older obligation —
+    // the whole point of member_selected.
+    const intent = await initiatePayment(
+      member.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '15.00',
+      [chosen.id],
+    );
+
+    const webhookRes = await fireWebhook(
+      admin.identity.organisationId,
+      intent.providerReference,
+      'succeeded',
+    );
+    expect(webhookRes.outcome).toBe('succeeded');
+
+    const obligationsRes = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}/obligations`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const byId = new Map(
+      (obligationsRes.body as ObligationResponse[]).map((o) => [o.id, o]),
+    );
+    expect(byId.get(chosen.id)?.status).toBe('PAID');
+    expect(byId.get(older.id)?.status).not.toBe('PAID');
+    expect(byId.get(older.id)?.amountPaid).toBe('0');
   });
 
   it('a repeat webhook delivery is a no-op, never a double-post', async () => {
@@ -534,5 +592,58 @@ describe('Payments (e2e)', () => {
     expect((intentACheck.body as PaymentIntentResponse).status).toBe(
       'INITIATED',
     );
+  });
+
+  it('the activity feed is visible to any member (not just admin/self), sourced from the real ledger', async () => {
+    const admin = await registerOrganisation('Activity Feed Org');
+    const payer = await joinOrganisation(admin.identity.organisationId);
+    const onlooker = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '20.00');
+    await createObligation(
+      admin.accessToken,
+      plan.id,
+      payer.identity.memberId,
+      '2026-09-01',
+    );
+
+    const intent = await initiatePayment(
+      payer.accessToken,
+      payer.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+    await fireWebhook(
+      admin.identity.organisationId,
+      intent.providerReference,
+      'succeeded',
+    );
+
+    // A different, uninvolved member of the same org can see it — the
+    // whole point of this endpoint (see PaymentService.listActivity).
+    const activityRes = await request(app.getHttpServer())
+      .get('/payments/activity')
+      .set('Authorization', `Bearer ${onlooker.accessToken}`)
+      .expect(200);
+    const activity = activityRes.body as {
+      credit: string;
+      obligation: {
+        contributionPlan: { name: string; cadence: string };
+        member: { account: { name: string | null; phoneNumber: string } };
+      };
+    }[];
+    const entry = activity.find((a) => a.credit === '20');
+    expect(entry).toBeDefined();
+    expect(entry?.obligation.contributionPlan.name).toBe('Monthly Due');
+    expect(entry?.obligation.member.account.name).toBe('Test Member');
+
+    // A member of a different org never sees it — still tenant-isolated;
+    // this org has posted no payments of its own, so its feed is empty.
+    const otherOrg = await registerOrganisation('Activity Feed Other Org');
+    const otherOrgActivity = await request(app.getHttpServer())
+      .get('/payments/activity')
+      .set('Authorization', `Bearer ${otherOrg.accessToken}`)
+      .expect(200);
+    expect(otherOrgActivity.body).toEqual([]);
   });
 });

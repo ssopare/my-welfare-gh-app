@@ -4,7 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
+import type { AuthTokenPayload } from '../auth/auth.service';
+import { requireAdmin } from '../common/access.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { RbacService } from '../rbac/rbac.service';
 
 export interface JournalLineInput {
   ledgerAccountId: string;
@@ -27,7 +30,10 @@ export interface PostJournalEntryParams {
 // §12.2, FR-LEDGER-01/02.
 @Injectable()
 export class LedgerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rbac: RbacService,
+  ) {}
 
   async postJournalEntry(
     organisationId: string,
@@ -168,5 +174,21 @@ export class LedgerService {
         balance: balance.toString(),
       };
     });
+  }
+
+  // Admin-only transaction history — surfaced building the admin console:
+  // every prior endpoint either posted an entry or reversed one by an
+  // already-known id, so nothing before this could actually browse what's
+  // been posted. Financial transaction history, so admin-gated (unlike the
+  // more general-purpose fund/balance reads above).
+  async listJournalEntries(actor: AuthTokenPayload, fundId?: string) {
+    await requireAdmin(this.rbac, actor);
+    return this.prisma.withTenant(actor.organisationId, (tx) =>
+      tx.journalEntry.findMany({
+        where: fundId ? { fundId } : undefined,
+        orderBy: { postedAt: 'desc' },
+        include: { lines: true },
+      }),
+    );
   }
 }

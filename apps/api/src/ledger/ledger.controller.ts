@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -18,6 +26,14 @@ export class LedgerController {
   @Get('ledger-accounts/:id/balance')
   getBalance(@CurrentUser() user: AuthTokenPayload, @Param('id') id: string) {
     return this.ledger.getLedgerAccountBalance(user.organisationId, id);
+  }
+
+  @Get('journal-entries')
+  listJournalEntries(
+    @CurrentUser() user: AuthTokenPayload,
+    @Query('fundId') fundId?: string,
+  ) {
+    return this.ledger.listJournalEntries(user, fundId);
   }
 
   @Post('journal-entries/:id/reverse')

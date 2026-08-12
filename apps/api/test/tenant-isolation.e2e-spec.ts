@@ -17,17 +17,21 @@ describe('Tenant isolation (RLS)', () => {
     prisma = new PrismaService();
     await prisma.onModuleInit();
 
+    const unique = Date.now();
     orgA = await prisma.provisionOrganisation({
       legalName: 'Org A Welfare Association',
       type: 'association',
+      joinCode: `TSTA-${unique}`,
     });
     orgB = await prisma.provisionOrganisation({
       legalName: 'Org B Welfare Association',
       type: 'association',
+      joinCode: `TSTB-${unique}`,
     });
     emptyOrg = await prisma.provisionOrganisation({
       legalName: 'Freshly Onboarded Org',
       type: 'association',
+      joinCode: `TSTC-${unique}`,
     });
 
     accountId = (

@@ -108,6 +108,7 @@ describe('RBAC (e2e)', () => {
         password: 'correct-horse-battery-staple',
         legalName,
         organisationType: 'voluntary',
+        name: 'Test Admin',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -135,6 +136,7 @@ describe('RBAC (e2e)', () => {
         phoneNumber: uniquePhone(),
         password: 'correct-horse-battery-staple',
         organisationId,
+        name: 'Test Member',
       })
       .expect(201);
     const { accessToken } = res.body as AccessTokenResponse;
@@ -276,6 +278,47 @@ describe('RBAC (e2e)', () => {
       .set('Authorization', `Bearer ${member.accessToken}`)
       .send({ name: 'Should fail again' })
       .expect(403);
+  });
+
+  it("lists a role's current assignments (admin-only), including the newly revoked one", async () => {
+    const admin = await registerOrganisation('RBAC List Assignments Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    // A second, ordinary member who is never granted anything — used to
+    // prove the 403 case, since `member` below is deliberately promoted
+    // to Org Admin as part of this same test.
+    const plainMember = await joinOrganisation(admin.identity.organisationId);
+
+    const rolesRes = await request(app.getHttpServer())
+      .get('/roles')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const orgAdminRole = (rolesRes.body as RoleResponse[]).find(
+      (r) => r.name === 'Org Admin',
+    );
+
+    await request(app.getHttpServer())
+      .get(`/roles/${orgAdminRole?.id}/assignments`)
+      .set('Authorization', `Bearer ${plainMember.accessToken}`)
+      .expect(403);
+
+    const assignRes = await request(app.getHttpServer())
+      .post(`/roles/${orgAdminRole?.id}/assignments`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ memberId: member.identity.memberId })
+      .expect(201);
+    const assignment = assignRes.body as RoleAssignmentResponse;
+
+    const listRes = await request(app.getHttpServer())
+      .get(`/roles/${orgAdminRole?.id}/assignments`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const assignments = listRes.body as { id: string; memberId: string }[];
+    expect(assignments.map((a) => a.id)).toEqual(
+      expect.arrayContaining([assignment.id]),
+    );
+    expect(assignments.find((a) => a.id === assignment.id)?.memberId).toBe(
+      member.identity.memberId,
+    );
   });
 
   it('an assignment with termEnd already in the past does not grant access', async () => {
