@@ -74,6 +74,27 @@ interface DefaulterRegisterRow {
   };
 }
 
+interface AdvanceContributionRow {
+  memberId: string;
+  phoneNumber: string;
+  creditBalance: string;
+  nextObligation: {
+    obligationId: string;
+    dueDate: string;
+    amountOutstanding: string;
+  } | null;
+}
+
+interface ArrearsAllocationRow {
+  memberId: string;
+  phoneNumber: string;
+  obligationId: string;
+  contributionPeriod: string;
+  cashCollectionDate: string;
+  amount: string;
+  daysLate: number;
+}
+
 interface DisbursementReportRow {
   claimId: string;
   memberId: string;
@@ -299,11 +320,12 @@ describe('Reporting (e2e)', () => {
     fundId: string,
     amountValue: string,
   ) {
-    await request(app.getHttpServer())
+    const res = await request(app.getHttpServer())
       .post('/payments/contribution')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ memberId, fundId, amountValue, currency: 'GHS' })
       .expect(201);
+    return res.body as { journalEntry: { id: string } };
   }
 
   async function createChapter(
@@ -475,7 +497,10 @@ describe('Reporting (e2e)', () => {
     const claimRes = await request(app.getHttpServer())
       .post(`/benefit-rules/${rule.id}/claims`)
       .set('Authorization', `Bearer ${member.accessToken}`)
-      .send({ memberId: member.identity.memberId, eventDate: new Date().toISOString() })
+      .send({
+        memberId: member.identity.memberId,
+        eventDate: new Date().toISOString(),
+      })
       .expect(201);
     const claim = claimRes.body as { id: string };
     await request(app.getHttpServer())
@@ -493,7 +518,11 @@ describe('Reporting (e2e)', () => {
       .get('/reports/contributions-vs-claims')
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .expect(200);
-    const rows = res.body as { month: string; contributions: string; claimsPaid: string }[];
+    const rows = res.body as {
+      month: string;
+      contributions: string;
+      claimsPaid: string;
+    }[];
     expect(rows).toHaveLength(6);
     // Earliest month, well before this org existed, has nothing posted.
     expect(rows[0].contributions).toBe('0');
@@ -714,5 +743,862 @@ describe('Reporting (e2e)', () => {
       .get(`/members/${memberA.identity.memberId}/statement`)
       .set('Authorization', `Bearer ${orgB.accessToken}`)
       .expect(404);
+  });
+
+  it('income & expenditure statement totals a real payment and a real disbursement, and excludes a fund transfer', async () => {
+    const admin = await registerOrganisation('Report I&E Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const approver = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    await grantTreasurer(admin.accessToken, approver.identity.memberId);
+    const fund = await createFund(admin.accessToken);
+    const secondFundRes = await request(app.getHttpServer())
+      .post('/funds')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ name: 'Second Fund' })
+      .expect(201);
+    const secondFund = secondFundRes.body as FundResponse;
+
+    const plan = await createActivePlan(admin.accessToken);
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(5),
+    );
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    const ruleRes = await request(app.getHttpServer())
+      .post('/benefit-rules')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Medical Support',
+        triggerEvent: 'member.hospitalisation',
+        subjectTypes: ['self'],
+        amountValue: '15.00',
+        currency: 'GHS',
+        occurrenceCapMax: 1,
+        approvalChain: ['treasurer_disburse'],
+      })
+      .expect(201);
+    const rule = ruleRes.body as RuleResponse;
+    await request(app.getHttpServer())
+      .post(`/benefit-rules/${rule.id}/activate`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({})
+      .expect(201);
+    const claimRes = await request(app.getHttpServer())
+      .post(`/benefit-rules/${rule.id}/claims`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        eventDate: new Date().toISOString(),
+      })
+      .expect(201);
+    const claim = claimRes.body as { id: string };
+    await request(app.getHttpServer())
+      .post(`/claims/${claim.id}/decide`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ decision: 'APPROVE' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/claims/${claim.id}/disburse`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ fundId: fund.id })
+      .expect(201);
+
+    // A fund transfer — must not show up as income or expenditure anywhere.
+    await request(app.getHttpServer())
+      .post(`/funds/${fund.id}/transfer`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ toFundId: secondFund.id, amountValue: '3.00' })
+      .expect(201);
+
+    const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const res = await request(app.getHttpServer())
+      .get(`/reports/income-expenditure?from=${from}&to=${to}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const statement = res.body as {
+      incomeLines: { accountName: string; amount: string }[];
+      expenseLines: { accountName: string; amount: string }[];
+      totalIncome: string;
+      totalExpense: string;
+      surplusOrDeficit: string;
+    };
+    expect(statement.totalIncome).toBe('20');
+    expect(statement.totalExpense).toBe('15');
+    expect(statement.surplusOrDeficit).toBe('5');
+    expect(
+      statement.incomeLines.some((l) => l.accountName === 'Fund Equity'),
+    ).toBe(false);
+    expect(
+      statement.expenseLines.some((l) => l.accountName === 'Fund Equity'),
+    ).toBe(false);
+
+    // A member without ledger:view cannot read this statement.
+    await request(app.getHttpServer())
+      .get(`/reports/income-expenditure?from=${from}&to=${to}`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(403);
+  });
+
+  it('trial balance balances (total debit = total credit) after a real payment', async () => {
+    const admin = await registerOrganisation('Report Trial Balance Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken);
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(5),
+    );
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    const res = await request(app.getHttpServer())
+      .get('/reports/trial-balance')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const trialBalance = res.body as {
+      accounts: {
+        accountName: string;
+        debitBalance: string;
+        creditBalance: string;
+      }[];
+      totalDebit: string;
+      totalCredit: string;
+      balanced: boolean;
+    };
+    expect(trialBalance.balanced).toBe(true);
+    expect(trialBalance.totalDebit).toBe(trialBalance.totalCredit);
+    const cash = trialBalance.accounts.find((a) => a.accountName === 'Cash');
+    expect(cash?.debitBalance).toBe('20');
+    const income = trialBalance.accounts.find(
+      (a) => a.accountName === 'Contributions Income',
+    );
+    expect(income?.creditBalance).toBe('20');
+  });
+
+  it("general ledger for the Cash account shows a running balance that matches the account's own balance endpoint", async () => {
+    const admin = await registerOrganisation('Report General Ledger Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken);
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(5),
+    );
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    const cashAccount = fund.ledgerAccounts.find((a) => a.name === 'Cash');
+    const balanceRes = await request(app.getHttpServer())
+      .get(`/ledger-accounts/${cashAccount?.id}/balance`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const currentBalance = (balanceRes.body as { balance: string }).balance;
+
+    const res = await request(app.getHttpServer())
+      .get(`/reports/general-ledger/${cashAccount?.id}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const gl = res.body as {
+      entries: { debit: string; credit: string; runningBalance: string }[];
+      openingBalance: string;
+      closingBalance: string;
+    };
+    expect(gl.openingBalance).toBe('0');
+    expect(gl.entries).toHaveLength(1);
+    expect(gl.entries[0].debit).toBe('20');
+    expect(gl.entries[0].runningBalance).toBe('20');
+    expect(gl.closingBalance).toBe(currentBalance);
+  });
+
+  it('advance contributions: an overshoot past the monthly-extension cap parks a real credit balance, and a zero-balance member is excluded', async () => {
+    const admin = await registerOrganisation('Report Advance Contrib Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const quietMember = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    await setStatus(admin.accessToken, quietMember.identity.memberId, 'ACTIVE');
+    const plan = await createActivePlan(admin.accessToken);
+    const fund = await createFund(admin.accessToken);
+
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(5),
+    );
+    // Original $20 obligation + 24 months of auto-extension (the safety
+    // cap) = $500 fully absorbed; the last $20 has nowhere left to go and
+    // parks as a real Member.creditBalance, not a rejection.
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '520.00',
+    );
+
+    const res = await request(app.getHttpServer())
+      .get('/reports/advance-contributions')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const rows = res.body as AdvanceContributionRow[];
+    const row = rows.find((r) => r.memberId === member.identity.memberId);
+    expect(row).toBeDefined();
+    expect(row?.creditBalance).toBe('20');
+    expect(row?.phoneNumber).toBeTruthy();
+    // Every generated monthly obligation, including the extensions, ended
+    // up fully paid — nothing left open to report as "next".
+    expect(row?.nextObligation).toBeNull();
+
+    expect(rows.some((r) => r.memberId === quietMember.identity.memberId)).toBe(
+      false,
+    );
+
+    await request(app.getHttpServer())
+      .get('/reports/advance-contributions')
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(403);
+  });
+
+  it('arrears allocation distinguishes the contribution period from the real, later cash-collection date', async () => {
+    const admin = await registerOrganisation('Report Arrears Allocation Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    const plan = await createActivePlan(admin.accessToken);
+    const fund = await createFund(admin.accessToken);
+
+    // Due 30 days ago, paid just now — a genuinely late payment.
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(30),
+    );
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    const res = await request(app.getHttpServer())
+      .get(`/reports/arrears-allocation?memberId=${member.identity.memberId}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const rows = res.body as ArrearsAllocationRow[];
+    expect(rows).toHaveLength(1);
+    const row = rows[0];
+    expect(row.amount).toBe('20');
+    expect(row.phoneNumber).toBeTruthy();
+    const contributionPeriod = new Date(row.contributionPeriod).getTime();
+    const cashCollectionDate = new Date(row.cashCollectionDate).getTime();
+    expect(cashCollectionDate).toBeGreaterThan(contributionPeriod);
+    expect(row.daysLate).toBeGreaterThanOrEqual(29);
+
+    await request(app.getHttpServer())
+      .get('/reports/arrears-allocation')
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(403);
+  });
+
+  it('benefit expenditure analytics buckets claims by status and only counts PAID ones toward totals', async () => {
+    const admin = await registerOrganisation('Report Benefit Expenditure Org');
+    const submittedMember = await joinOrganisation(
+      admin.identity.organisationId,
+    );
+    const approvedMember = await joinOrganisation(
+      admin.identity.organisationId,
+    );
+    const paidMember = await joinOrganisation(admin.identity.organisationId);
+    const rejectedMember = await joinOrganisation(
+      admin.identity.organisationId,
+    );
+    const approver = await joinOrganisation(admin.identity.organisationId);
+    for (const m of [
+      submittedMember,
+      approvedMember,
+      paidMember,
+      rejectedMember,
+    ]) {
+      await setStatus(admin.accessToken, m.identity.memberId, 'ACTIVE');
+    }
+    await grantTreasurer(admin.accessToken, approver.identity.memberId);
+    const fund = await createFund(admin.accessToken);
+
+    const ruleRes = await request(app.getHttpServer())
+      .post('/benefit-rules')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Medical Support',
+        triggerEvent: 'member.hospitalisation',
+        subjectTypes: ['self'],
+        amountValue: '50.00',
+        currency: 'GHS',
+        occurrenceCapMax: 10,
+        approvalChain: ['treasurer_disburse'],
+      })
+      .expect(201);
+    const rule = ruleRes.body as RuleResponse;
+    await request(app.getHttpServer())
+      .post(`/benefit-rules/${rule.id}/activate`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({})
+      .expect(201);
+
+    const submitClaim = async (memberToken: string, memberId: string) => {
+      const claimRes = await request(app.getHttpServer())
+        .post(`/benefit-rules/${rule.id}/claims`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .send({ memberId, eventDate: new Date().toISOString() })
+        .expect(201);
+      return (claimRes.body as { id: string }).id;
+    };
+
+    await submitClaim(
+      submittedMember.accessToken,
+      submittedMember.identity.memberId,
+    );
+
+    const approvedClaimId = await submitClaim(
+      approvedMember.accessToken,
+      approvedMember.identity.memberId,
+    );
+    await request(app.getHttpServer())
+      .post(`/claims/${approvedClaimId}/decide`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ decision: 'APPROVE' })
+      .expect(201);
+
+    const paidClaimId = await submitClaim(
+      paidMember.accessToken,
+      paidMember.identity.memberId,
+    );
+    await request(app.getHttpServer())
+      .post(`/claims/${paidClaimId}/decide`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ decision: 'APPROVE' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/claims/${paidClaimId}/disburse`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ fundId: fund.id })
+      .expect(201);
+
+    const rejectedClaimId = await submitClaim(
+      rejectedMember.accessToken,
+      rejectedMember.identity.memberId,
+    );
+    await request(app.getHttpServer())
+      .post(`/claims/${rejectedClaimId}/decide`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ decision: 'REJECT' })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get('/reports/benefit-expenditure')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const analytics = res.body as {
+      byBenefitType: {
+        benefitRuleId: string;
+        totalPaid: string;
+        beneficiaryCount: number;
+        averageBenefit: string;
+        statusCounts: {
+          submitted: number;
+          approved: number;
+          rejected: number;
+          paid: number;
+        };
+      }[];
+      totalBenefitsPaid: string;
+    };
+    const group = analytics.byBenefitType.find(
+      (g) => g.benefitRuleId === rule.id,
+    );
+    expect(group).toBeDefined();
+    expect(group?.statusCounts).toEqual({
+      submitted: 1,
+      approved: 1,
+      rejected: 1,
+      paid: 1,
+    });
+    expect(group?.totalPaid).toBe('50');
+    expect(group?.beneficiaryCount).toBe(1);
+    expect(group?.averageBenefit).toBe('50');
+
+    await request(app.getHttpServer())
+      .get('/reports/benefit-expenditure')
+      .set('Authorization', `Bearer ${submittedMember.accessToken}`)
+      .expect(403);
+  });
+
+  it('financial health computes collection/arrears rates and lands on the documented At Risk boundary (50% collected, 50% arrears)', async () => {
+    const admin = await registerOrganisation('Report Financial Health Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    const plan = await createActivePlan(admin.accessToken);
+    const fund = await createFund(admin.accessToken);
+
+    // Two $20 obligations due in-window; only the older is paid
+    // (allocation is always oldest-first) — 50% collected, 50% arrears.
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(10),
+    );
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(5),
+    );
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    const from = daysAgo(20);
+    const to = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const res = await request(app.getHttpServer())
+      .get(`/reports/financial-health?from=${from}&to=${to}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const health = res.body as {
+      collectionRate: string | null;
+      arrearsRate: string | null;
+      financialHealth: string;
+      expenseRatio: string | null;
+      administrativeCostRatio: string | null;
+      notAvailable: string | null;
+    };
+    expect(health.collectionRate).toBe('50');
+    expect(health.arrearsRate).toBe('50');
+    expect(health.financialHealth).toBe('At Risk');
+    expect(health.expenseRatio).toBeNull();
+    expect(health.administrativeCostRatio).toBeNull();
+    expect(health.notAvailable).toContain('administrative');
+
+    await request(app.getHttpServer())
+      .get('/reports/financial-health')
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(403);
+  });
+
+  it('financial health: creating an isAdministrative account turns the ratio gate on, even with zero activity on it', async () => {
+    const admin = await registerOrganisation(
+      'Report Financial Health Admin Account Org',
+    );
+    const member = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    const plan = await createActivePlan(admin.accessToken);
+    const fund = await createFund(admin.accessToken);
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(5),
+    );
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    const before = await request(app.getHttpServer())
+      .get('/reports/financial-health')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    expect(
+      (before.body as { expenseRatio: string | null }).expenseRatio,
+    ).toBeNull();
+    expect(
+      (before.body as { notAvailable: string | null }).notAvailable,
+    ).not.toBeNull();
+
+    await request(app.getHttpServer())
+      .post(`/funds/${fund.id}/accounts`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Administrative Expenses',
+        type: 'EXPENSE',
+        isAdministrative: true,
+      })
+      .expect(201);
+
+    const after = await request(app.getHttpServer())
+      .get('/reports/financial-health')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const health = after.body as {
+      expenseRatio: string | null;
+      administrativeCostRatio: string | null;
+      notAvailable: string | null;
+    };
+    // The account exists but nothing has ever posted to it — '0', not
+    // null: the gate is "does this category exist," not "does it have a
+    // balance."
+    expect(health.expenseRatio).toBe('0');
+    expect(health.administrativeCostRatio).toBe('0');
+    expect(health.notAvailable).toBeNull();
+  });
+
+  it('cash flow statement categorizes Cash movements into operating/financing, nets a consolidated transfer to zero, and reconciles', async () => {
+    const admin = await registerOrganisation('Report Cash Flow Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const approver = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    await grantTreasurer(admin.accessToken, approver.identity.memberId);
+    const fund = await createFund(admin.accessToken);
+    const secondFundRes = await request(app.getHttpServer())
+      .post('/funds')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ name: 'Second Fund' })
+      .expect(201);
+    const secondFund = secondFundRes.body as FundResponse;
+
+    const plan = await createActivePlan(admin.accessToken);
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(5),
+    );
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    const ruleRes = await request(app.getHttpServer())
+      .post('/benefit-rules')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Medical Support',
+        triggerEvent: 'member.hospitalisation',
+        subjectTypes: ['self'],
+        amountValue: '15.00',
+        currency: 'GHS',
+        occurrenceCapMax: 1,
+        approvalChain: ['treasurer_disburse'],
+      })
+      .expect(201);
+    const rule = ruleRes.body as RuleResponse;
+    await request(app.getHttpServer())
+      .post(`/benefit-rules/${rule.id}/activate`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({})
+      .expect(201);
+    const claimRes = await request(app.getHttpServer())
+      .post(`/benefit-rules/${rule.id}/claims`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        eventDate: new Date().toISOString(),
+      })
+      .expect(201);
+    const claim = claimRes.body as { id: string };
+    await request(app.getHttpServer())
+      .post(`/claims/${claim.id}/decide`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ decision: 'APPROVE' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/claims/${claim.id}/disburse`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ fundId: fund.id })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/funds/${fund.id}/transfer`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ toFundId: secondFund.id, amountValue: '3.00' })
+      .expect(201);
+
+    const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    const consolidatedRes = await request(app.getHttpServer())
+      .get(`/reports/cash-flow?from=${from}&to=${to}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const consolidated = consolidatedRes.body as {
+      operating: { inflow: string; outflow: string };
+      financing: { inflow: string; outflow: string };
+      investing: { inflow: string; outflow: string };
+      openingCash: string;
+      closingCash: string;
+      netCashMovement: string;
+      reconciles: boolean;
+    };
+    expect(consolidated.operating.inflow).toBe('20');
+    expect(consolidated.operating.outflow).toBe('15');
+    // Both funds' Cash accounts are in scope here, so the transfer's out
+    // and in legs both count — net zero, matching §31's elimination rule.
+    expect(consolidated.financing.inflow).toBe('3');
+    expect(consolidated.financing.outflow).toBe('3');
+    expect(consolidated.investing.inflow).toBe('0');
+    expect(consolidated.openingCash).toBe('0');
+    expect(consolidated.closingCash).toBe('5');
+    expect(consolidated.netCashMovement).toBe('5');
+    expect(consolidated.reconciles).toBe(true);
+
+    const singleFundRes = await request(app.getHttpServer())
+      .get(`/reports/cash-flow?fundId=${fund.id}&from=${from}&to=${to}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const singleFund = singleFundRes.body as {
+      financing: { inflow: string; outflow: string };
+      closingCash: string;
+      reconciles: boolean;
+    };
+    // For this one fund, the transfer is a real outflow, not netted away.
+    expect(singleFund.financing.inflow).toBe('0');
+    expect(singleFund.financing.outflow).toBe('3');
+    expect(singleFund.closingCash).toBe('2');
+    expect(singleFund.reconciles).toBe(true);
+
+    await request(app.getHttpServer())
+      .get(`/reports/cash-flow?from=${from}&to=${to}`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(403);
+  });
+
+  it('fund position report shows per-fund figures honestly and rolls committed-but-unpaid benefits up organisation-wide, not per fund', async () => {
+    const admin = await registerOrganisation('Report Fund Position Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const approver = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    await grantTreasurer(admin.accessToken, approver.identity.memberId);
+    const fund = await createFund(admin.accessToken);
+    const secondFundRes = await request(app.getHttpServer())
+      .post('/funds')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ name: 'Second Fund' })
+      .expect(201);
+    const secondFund = secondFundRes.body as FundResponse;
+
+    const plan = await createActivePlan(admin.accessToken);
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(5),
+    );
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    const paidRuleRes = await request(app.getHttpServer())
+      .post('/benefit-rules')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Medical Support',
+        triggerEvent: 'member.hospitalisation',
+        subjectTypes: ['self'],
+        amountValue: '15.00',
+        currency: 'GHS',
+        occurrenceCapMax: 1,
+        approvalChain: ['treasurer_disburse'],
+      })
+      .expect(201);
+    const paidRule = paidRuleRes.body as RuleResponse;
+    await request(app.getHttpServer())
+      .post(`/benefit-rules/${paidRule.id}/activate`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({})
+      .expect(201);
+    const paidClaimRes = await request(app.getHttpServer())
+      .post(`/benefit-rules/${paidRule.id}/claims`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        eventDate: new Date().toISOString(),
+      })
+      .expect(201);
+    const paidClaim = paidClaimRes.body as { id: string };
+    await request(app.getHttpServer())
+      .post(`/claims/${paidClaim.id}/decide`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ decision: 'APPROVE' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/claims/${paidClaim.id}/disburse`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ fundId: fund.id })
+      .expect(201);
+
+    // Approved but never disbursed — committed, unattributable to a fund.
+    const committedRuleRes = await request(app.getHttpServer())
+      .post('/benefit-rules')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Bereavement Support',
+        triggerEvent: 'member.death',
+        subjectTypes: ['self'],
+        amountValue: '25.00',
+        currency: 'GHS',
+        occurrenceCapMax: 1,
+        approvalChain: ['treasurer_disburse'],
+      })
+      .expect(201);
+    const committedRule = committedRuleRes.body as RuleResponse;
+    await request(app.getHttpServer())
+      .post(`/benefit-rules/${committedRule.id}/activate`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({})
+      .expect(201);
+    const committedClaimRes = await request(app.getHttpServer())
+      .post(`/benefit-rules/${committedRule.id}/claims`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        eventDate: new Date().toISOString(),
+      })
+      .expect(201);
+    const committedClaim = committedClaimRes.body as { id: string };
+    await request(app.getHttpServer())
+      .post(`/claims/${committedClaim.id}/decide`)
+      .set('Authorization', `Bearer ${approver.accessToken}`)
+      .send({ decision: 'APPROVE' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/funds/${fund.id}/transfer`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ toFundId: secondFund.id, amountValue: '3.00' })
+      .expect(201);
+
+    const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const res = await request(app.getHttpServer())
+      .get(`/reports/fund-position?from=${from}&to=${to}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const report = res.body as {
+      funds: {
+        fundId: string;
+        income: string;
+        expenses: string;
+        transfersIn: string;
+        transfersOut: string;
+        surplusOrDeficit: string;
+        cashAvailable: string;
+      }[];
+      organisationSummary: {
+        totalCashAvailable: string;
+        totalCommittedBenefits: string;
+        availableUncommittedFunds: string;
+        note: string;
+      };
+    };
+
+    const fundRow = report.funds.find((f) => f.fundId === fund.id);
+    expect(fundRow?.income).toBe('20');
+    expect(fundRow?.expenses).toBe('15');
+    expect(fundRow?.transfersOut).toBe('3');
+    expect(fundRow?.surplusOrDeficit).toBe('5');
+    expect(fundRow?.cashAvailable).toBe('2');
+
+    const secondFundRow = report.funds.find((f) => f.fundId === secondFund.id);
+    expect(secondFundRow?.transfersIn).toBe('3');
+    expect(secondFundRow?.cashAvailable).toBe('3');
+
+    // The committed-but-unpaid Bereavement claim (GHS 25) is real, but
+    // shows up organisation-wide only — it was never attributed to
+    // either fund, because no fund was chosen for it yet.
+    expect(report.organisationSummary.totalCommittedBenefits).toBe('25');
+    expect(report.organisationSummary.totalCashAvailable).toBe('5');
+    expect(report.organisationSummary.availableUncommittedFunds).toBe('-20');
+    expect(report.organisationSummary.note.length).toBeGreaterThan(0);
+
+    await request(app.getHttpServer())
+      .get(`/reports/fund-position?from=${from}&to=${to}`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(403);
+  });
+
+  it('reversals & adjustments links a reversal to its original and nets it out of Contributions Income collection', async () => {
+    const admin = await registerOrganisation('Report Reversals Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    const plan = await createActivePlan(admin.accessToken);
+    const fund = await createFund(admin.accessToken);
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      daysAgo(5),
+    );
+    const payment = await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    await request(app.getHttpServer())
+      .post(`/journal-entries/${payment.journalEntry.id}/reverse`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ reason: 'Member paid in error' })
+      .expect(201);
+
+    const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const res = await request(app.getHttpServer())
+      .get(`/reports/reversals?from=${from}&to=${to}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const report = res.body as {
+      reversals: {
+        journalEntryId: string;
+        originalEntryId: string | null;
+        amount: string;
+      }[];
+      grossCollection: string;
+      reversalsTotal: string;
+      netCollection: string;
+    };
+    expect(report.reversals).toHaveLength(1);
+    expect(report.reversals[0].originalEntryId).toBe(payment.journalEntry.id);
+    expect(report.reversals[0].amount).toBe('20');
+    expect(report.grossCollection).toBe('20');
+    expect(report.reversalsTotal).toBe('20');
+    expect(report.netCollection).toBe('0');
+
+    await request(app.getHttpServer())
+      .get(`/reports/reversals?from=${from}&to=${to}`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(403);
   });
 });

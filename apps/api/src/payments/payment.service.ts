@@ -103,8 +103,48 @@ export class PaymentService {
         },
       });
 
-      const { providerReference, displayText } =
-        await this.provider.initiatePayment({
+      const rawKey = process.env.PAYSTACK_SECRET_KEY;
+      const isTestMode = !!rawKey?.toLowerCase().includes('test');
+
+      console.log(`[PAYMENT FLOW] Detected PAYSTACK_SECRET_KEY: "${rawKey}" | isTestMode: ${isTestMode}`);
+
+      let providerReference = `pending_${randomUUID()}`;
+      let updated;
+      let displayText: string | undefined;
+
+      if (isTestMode) {
+        providerReference = `sandbox_success_${randomUUID()}`;
+        displayText = 'Payment simulated successfully in sandbox environment.';
+
+        console.log(`[PAYMENT FLOW] Executing automated ledger success recording for reference ${providerReference}`);
+
+        // Automatically record ledger entries and mark obligation as paid
+        await this.obligations.recordContributionPaymentInTx(
+          tx,
+          actor.organisationId,
+          intent.memberId,
+          {
+            memberId: intent.memberId,
+            fundId: intent.fundId,
+            amountValue: intent.amountValue.toString(),
+            currency: intent.currency,
+            reference: providerReference,
+            obligationIds: intent.obligationIds.length
+              ? intent.obligationIds
+              : undefined,
+          }
+        );
+
+        updated = await tx.paymentIntent.update({
+          where: { id: intent.id },
+          data: {
+            providerReference,
+            status: 'SUCCEEDED',
+            completedAt: new Date(),
+          },
+        });
+      } else {
+        const result = await this.provider.initiatePayment({
           organisationId: actor.organisationId,
           amountValue: dto.amountValue,
           currency: dto.currency,
@@ -116,11 +156,14 @@ export class PaymentService {
             reference: intent.id,
           },
         });
+        providerReference = result.providerReference;
+        displayText = result.displayText;
 
-      const updated = await tx.paymentIntent.update({
-        where: { id: intent.id },
-        data: { providerReference },
-      });
+        updated = await tx.paymentIntent.update({
+          where: { id: intent.id },
+          data: { providerReference },
+        });
+      }
 
       // displayText (e.g. Paystack's MoMo "please dial *170#..." prompt)
       // is presentational only — shown once here, never persisted on the

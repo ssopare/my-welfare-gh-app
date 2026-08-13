@@ -26,11 +26,17 @@ export function FinancialMetric({ label, value, support, trend, icon, className 
   return (
     <Card
       className={cn(
-        "border-glass-border bg-glass-card/65 py-5 shadow-lg backdrop-blur-md transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:border-primary/30 dark:bg-glass-card/45",
+        "group relative overflow-hidden border-glass-border bg-glass-card/65 py-5 shadow-lg backdrop-blur-md transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:border-primary/30 dark:bg-glass-card/45",
         className,
       )}
     >
-      <CardContent className="flex items-start justify-between gap-3">
+      {/* Dynamic Background Glow Spot */}
+      <div className="absolute -right-6 -bottom-6 size-24 rounded-full opacity-[0.01] group-hover:opacity-[0.06] blur-xl transition-all duration-500 bg-primary pointer-events-none" />
+
+      {/* Left Vertical Color Accent Bar */}
+      <div className="absolute inset-y-0 left-0 w-[4px] bg-gradient-to-b from-primary to-primary/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+
+      <CardContent className="flex items-start justify-between gap-3 relative z-10">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
           <div className="mt-2">{value}</div>
@@ -52,7 +58,7 @@ export function FinancialMetric({ label, value, support, trend, icon, className 
           )}
         </div>
         {icon && (
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/15">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/15 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
             {icon}
           </div>
         )}

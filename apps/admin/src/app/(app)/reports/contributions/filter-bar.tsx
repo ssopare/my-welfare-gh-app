@@ -26,7 +26,7 @@ export function FilterBar({ plans }: { plans: ContributionPlan[] }) {
 
   return (
     <Select value={planId} onValueChange={setPlan}>
-      <SelectTrigger className="w-56">
+      <SelectTrigger className="w-56 print:hidden">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

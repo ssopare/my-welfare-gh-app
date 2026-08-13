@@ -82,7 +82,7 @@ export default async function MemberDetailPage({
     <div className="flex flex-col gap-6">
       <Link
         href="/members"
-        className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground print:hidden"
       >
         <ArrowLeft className="size-4" aria-hidden />
         Back to members
@@ -106,7 +106,7 @@ export default async function MemberDetailPage({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 print:hidden">
           {member.status === "EXITED" && (
             <AsyncActionButton
               action={reinstateMemberAction.bind(null, member.id)}
@@ -172,7 +172,7 @@ export default async function MemberDetailPage({
       </div>
 
       <Tabs defaultValue="statement">
-        <TabsList>
+        <TabsList className="print:hidden">
           <TabsTrigger value="statement">Statement</TabsTrigger>
           <TabsTrigger value="dependants">Dependants</TabsTrigger>
           <TabsTrigger value="history">Status history</TabsTrigger>

@@ -19,6 +19,8 @@ import { CreateFundDialog } from "./create-fund-dialog";
 import { PaymentAllocationSetting } from "./payment-allocation-setting";
 import { RecordPaymentDialog } from "./record-payment-dialog";
 import { ReverseEntryDialog } from "./reverse-entry-dialog";
+import { TransferFundsDialog } from "./transfer-funds-dialog";
+import { BulkUploadPaymentsDialog } from "@/components/finance/bulk-upload-payments-dialog";
 
 export const metadata: Metadata = {
   title: "Ledger — Welfare Platform",
@@ -80,7 +82,10 @@ export default async function LedgerPage() {
           </Button>
           <CreateFundDialog />
           {funds && members && (
-            <RecordPaymentDialog funds={funds} members={members} organisation={organisation} />
+            <>
+              <BulkUploadPaymentsDialog members={members} funds={funds} />
+              <RecordPaymentDialog funds={funds} members={members} organisation={organisation} />
+            </>
           )}
         </div>
       </div>
@@ -101,11 +106,17 @@ export default async function LedgerPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {fundsWithBalances.map(({ fund, balances }) => (
             <Card key={fund.id} className="border-glass-border bg-glass-card/65 shadow-lg backdrop-blur-md transition-all duration-300 hover:scale-[1.01] hover:shadow-xl hover:border-primary/20 dark:bg-glass-card/45">
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Wallet className="size-4 text-primary" aria-hidden />
                   {fund.name}
                 </CardTitle>
+                {funds && (
+                  <TransferFundsDialog
+                    fromFund={fund}
+                    otherFunds={funds.filter((f) => f.id !== fund.id)}
+                  />
+                )}
               </CardHeader>
               <CardContent>
                 <ul className="flex flex-col divide-y divide-border">

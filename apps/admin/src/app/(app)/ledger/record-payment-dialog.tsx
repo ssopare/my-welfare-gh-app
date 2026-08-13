@@ -95,6 +95,18 @@ export function RecordPaymentDialog({
   const selectionRequired =
     organisation?.paymentAllocationPolicy === "member_selected" && otherObligations.length > 0;
 
+  const selectedMember = members.find((m) => m.id === memberId);
+  const eligibleFunds = funds.filter((fund) => {
+    const isRestricted = fund.name.toLowerCase().includes("executive") ||
+                         fund.name.toLowerCase().includes("officer") ||
+                         fund.name.toLowerCase().includes("leadership");
+    if (isRestricted) {
+      return !!(selectedMember?.category?.toLowerCase().includes("officer") || 
+                selectedMember?.category?.toLowerCase().includes("executive"));
+    }
+    return true;
+  });
+
   function handleMemberChange(value: string) {
     setMemberId(value);
     setSelectedIds(new Set());
@@ -277,7 +289,7 @@ export function RecordPaymentDialog({
                 <SelectValue placeholder="Choose a fund" />
               </SelectTrigger>
               <SelectContent>
-                {funds.map((fund) => (
+                {eligibleFunds.map((fund) => (
                   <SelectItem key={fund.id} value={fund.id}>
                     {fund.name}
                   </SelectItem>

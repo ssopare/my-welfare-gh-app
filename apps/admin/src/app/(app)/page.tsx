@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { PiggyBank, TrendingUp, Users } from "lucide-react";
+import Link from "next/link";
+import { HeartPulse, PiggyBank, TrendingUp, Users } from "lucide-react";
 import { AttentionTiles } from "@/components/dashboard/attention-tiles";
 import { ContributionsVsClaimsChart, type ContributionsVsClaimsChartRow } from "@/components/dashboard/contributions-vs-claims-chart";
 import { DashboardPeriodFilter } from "@/components/dashboard/dashboard-period-filter";
@@ -7,6 +8,7 @@ import { FundTrendChart, type FundTrendRow } from "@/components/dashboard/fund-t
 import { JoinCodeCard } from "@/components/dashboard/join-code-card";
 import { FinancialMetric } from "@/components/finance/financial-metric";
 import { MoneyDisplay } from "@/components/finance/money-display";
+import { StatusBadge, type StatusTone } from "@/components/finance/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetchOrNull } from "@/lib/api-client";
 import { DASHBOARD_PERIODS, type DashboardPeriodValue } from "@/lib/dashboard-periods";
@@ -17,11 +19,19 @@ import type {
   ContributionSummaryRow,
   DefaulterRegisterRow,
   FundPositionTrendRow,
+  ManagementRatiosAndHealth,
   Member,
   MemberRemovalRequest,
   Organisation,
   ReconciliationException,
 } from "@welfare/shared-types";
+
+const HEALTH_TONE: Record<ManagementRatiosAndHealth["financialHealth"], StatusTone> = {
+  Healthy: "good",
+  Watch: "warn",
+  "At Risk": "warn",
+  Critical: "bad",
+};
 
 export const metadata: Metadata = {
   title: "Dashboard — Welfare Platform",
@@ -84,6 +94,7 @@ export default async function DashboardPage({
     claims,
     reconciliationExceptions,
     removalRequests,
+    financialHealth,
   ] = await Promise.all([
     apiFetchOrNull<Member[]>("/members", { token, cache: "no-store" }),
     apiFetchOrNull<ContributionSummaryRow[]>(
@@ -112,6 +123,10 @@ export default async function DashboardPage({
       token,
       cache: "no-store",
     }),
+    apiFetchOrNull<ManagementRatiosAndHealth>(
+      `/reports/financial-health?from=${period.from.toISOString()}&to=${period.to.toISOString()}`,
+      { token, cache: "no-store" },
+    ),
   ]);
 
   const activeMembers = members?.filter((m) => m.status === "ACTIVE").length ?? null;
@@ -164,7 +179,7 @@ export default async function DashboardPage({
 
       {organisation && <JoinCodeCard joinCode={organisation.joinCode} legalName={organisation.legalName} />}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <FinancialMetric
           label="Active members"
           value={
@@ -225,6 +240,28 @@ export default async function DashboardPage({
           }
           icon={<PiggyBank className="size-4" />}
         />
+        <Link href="/reports/financial-health" className="block">
+          <FinancialMetric
+            label="Financial health"
+            value={
+              financialHealth === null ? (
+                <span className="text-lg text-muted-foreground">—</span>
+              ) : (
+                <StatusBadge
+                  tone={HEALTH_TONE[financialHealth.financialHealth]}
+                  label={financialHealth.financialHealth}
+                  className="text-sm"
+                />
+              )
+            }
+            support={
+              financialHealth
+                ? `${financialHealth.collectionRate ?? "—"}% collected · ${financialHealth.arrearsRate ?? "—"}% arrears`
+                : "Requires ledger access"
+            }
+            icon={<HeartPulse className="size-4" />}
+          />
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

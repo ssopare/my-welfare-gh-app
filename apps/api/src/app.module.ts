@@ -3,6 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { BudgetModule } from './budget/budget.module';
 import { ClaimsModule } from './claims/claims.module';
 import { DefaulterModule } from './defaulter/defaulter.module';
 import { GovernanceModule } from './governance/governance.module';
@@ -36,6 +37,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     PlatformAuthModule,
     SubscriptionsModule,
     OrganisationModule,
+    BudgetModule,
   ],
   controllers: [AppController],
   providers: [AppService],

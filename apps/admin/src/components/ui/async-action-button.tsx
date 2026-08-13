@@ -25,6 +25,7 @@ export function AsyncActionButton({
       type="button"
       variant={variant}
       size="sm"
+      className="print:hidden"
       disabled={isPending}
       onClick={() => {
         startTransition(async () => {

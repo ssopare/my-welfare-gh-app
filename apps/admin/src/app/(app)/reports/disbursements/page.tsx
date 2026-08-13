@@ -23,7 +23,7 @@ export default async function DisbursementReportPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Link href="/reports" className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+      <Link href="/reports" className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground print:hidden">
         <ArrowLeft className="size-4" aria-hidden />
         Back to reports
       </Link>

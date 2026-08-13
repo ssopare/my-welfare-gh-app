@@ -63,4 +63,130 @@ export class ReportingController {
       parseDate(to),
     );
   }
+
+  @Get('reports/income-expenditure')
+  incomeExpenditureStatement(
+    @CurrentUser() user: AuthTokenPayload,
+    @Query('fundId') fundId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const now = new Date();
+    return this.reporting.incomeExpenditureStatement(user, {
+      fundId,
+      from:
+        parseDate(from) ??
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
+      to: parseDate(to) ?? now,
+    });
+  }
+
+  @Get('reports/trial-balance')
+  trialBalance(
+    @CurrentUser() user: AuthTokenPayload,
+    @Query('asOf') asOf?: string,
+    @Query('fundId') fundId?: string,
+  ) {
+    return this.reporting.trialBalance(user, { asOf: parseDate(asOf), fundId });
+  }
+
+  @Get('reports/general-ledger/:ledgerAccountId')
+  generalLedger(
+    @CurrentUser() user: AuthTokenPayload,
+    @Param('ledgerAccountId') ledgerAccountId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reporting.generalLedger(user, ledgerAccountId, {
+      from: parseDate(from),
+      to: parseDate(to),
+    });
+  }
+
+  @Get('reports/advance-contributions')
+  advanceContributions(@CurrentUser() user: AuthTokenPayload) {
+    return this.reporting.advanceContributions(user);
+  }
+
+  @Get('reports/arrears-allocation')
+  arrearsAllocation(
+    @CurrentUser() user: AuthTokenPayload,
+    @Query('memberId') memberId?: string,
+  ) {
+    return this.reporting.arrearsAllocation(user, { memberId });
+  }
+
+  @Get('reports/benefit-expenditure')
+  benefitExpenditureAnalytics(
+    @CurrentUser() user: AuthTokenPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reporting.benefitExpenditureAnalytics(user, {
+      from: parseDate(from),
+      to: parseDate(to),
+    });
+  }
+
+  @Get('reports/financial-health')
+  managementRatiosAndHealth(
+    @CurrentUser() user: AuthTokenPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const now = new Date();
+    return this.reporting.managementRatiosAndHealth(user, {
+      from:
+        parseDate(from) ??
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
+      to: parseDate(to) ?? now,
+    });
+  }
+
+  @Get('reports/cash-flow')
+  cashFlowStatement(
+    @CurrentUser() user: AuthTokenPayload,
+    @Query('fundId') fundId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const now = new Date();
+    return this.reporting.cashFlowStatement(user, {
+      fundId,
+      from:
+        parseDate(from) ??
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
+      to: parseDate(to) ?? now,
+    });
+  }
+
+  @Get('reports/fund-position')
+  fundPositionReport(
+    @CurrentUser() user: AuthTokenPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const now = new Date();
+    return this.reporting.fundPositionReport(user, {
+      from:
+        parseDate(from) ??
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
+      to: parseDate(to) ?? now,
+    });
+  }
+
+  @Get('reports/reversals')
+  reversalsAndAdjustments(
+    @CurrentUser() user: AuthTokenPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const now = new Date();
+    return this.reporting.reversalsAndAdjustments(user, {
+      from:
+        parseDate(from) ??
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
+      to: parseDate(to) ?? now,
+    });
+  }
 }

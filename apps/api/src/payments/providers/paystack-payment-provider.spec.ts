@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   InternalServerErrorException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PaystackPaymentProvider } from './paystack-payment-provider.service';
 import type { InitiatePaymentParams } from './payment-provider.interface';
@@ -90,6 +91,26 @@ describe('PaystackPaymentProvider', () => {
     const provider = new PaystackPaymentProvider();
     await expect(provider.initiatePayment(baseParams())).rejects.toThrow(
       InternalServerErrorException,
+    );
+  });
+
+  it('throws a clear, client-facing 503 (not a bare 500) when the network itself fails', async () => {
+    // What actually happened in real testing: fetch() rejecting with a
+    // plain TypeError (DNS lookup failure, connection refused, etc.) —
+    // distinct from Paystack responding with an error, which is the
+    // "reports failure" case above. Previously uncaught, this reached
+    // Nest's default exception filter as a bare 500 with no usable
+    // message, which is exactly why the mobile app could only ever show
+    // a generic "something went wrong".
+    global.fetch = jest.fn().mockRejectedValue(
+      new TypeError('fetch failed', {
+        cause: { code: 'ENOTFOUND', hostname: 'api.paystack.co' },
+      }),
+    );
+
+    const provider = new PaystackPaymentProvider();
+    await expect(provider.initiatePayment(baseParams())).rejects.toThrow(
+      ServiceUnavailableException,
     );
   });
 

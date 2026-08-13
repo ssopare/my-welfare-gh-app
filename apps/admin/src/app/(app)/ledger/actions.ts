@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { apiFetch, apiFetchOrNull, ApiError } from "@/lib/api-client";
 import { requireSession } from "@/lib/session";
 import type {
+  CreateLedgerAccountInput,
   Fund,
+  LedgerAccount,
   Obligation,
   PaymentAllocationPolicy,
   RecordContributionPaymentInput,
@@ -91,6 +93,71 @@ export async function createFundAction(
   return { error: null, success: true };
 }
 
+// Posts two linked entries server-side (LedgerService.transferBetweenFunds)
+// against each fund's Cash and Fund Equity accounts — see that method's
+// comment for why Equity, not a new account type. Nothing to configure
+// here beyond which funds and how much.
+export async function transferFundsAction(
+  fromFundId: string,
+  _prevState: FormActionState,
+  formData: FormData,
+): Promise<FormActionState> {
+  const { token } = await requireSession();
+  const toFundId = String(formData.get("toFundId") ?? "");
+  const amountValue = String(formData.get("amountValue") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || undefined;
+
+  if (!toFundId || !amountValue) {
+    return { error: "Destination fund and amount are required." };
+  }
+
+  try {
+    await apiFetch(`/funds/${fromFundId}/transfer`, {
+      method: "POST",
+      token,
+      body: { toFundId, amountValue, description },
+    });
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : "Something went wrong. Please try again." };
+  }
+
+  revalidatePath("/ledger");
+  return { error: null, success: true };
+}
+
+// Extends a fund's flat chart of accounts beyond the standard 6 —
+// FundService.createAccount rejects a duplicate name on the same fund and
+// requires admin. isAdministrative only matters for an EXPENSE account
+// (see ReportingService.managementRatiosAndHealth): flagging one is what
+// turns the Expense Ratio / Administrative Cost Ratio on.
+export async function createLedgerAccountAction(
+  fundId: string,
+  _prevState: FormActionState,
+  formData: FormData,
+): Promise<FormActionState> {
+  const { token } = await requireSession();
+  const name = String(formData.get("name") ?? "").trim();
+  const type = String(formData.get("type") ?? "") as CreateLedgerAccountInput["type"];
+  const isAdministrative = formData.get("isAdministrative") === "on";
+
+  if (!name || !type) {
+    return { error: "Name and type are both required." };
+  }
+
+  try {
+    await apiFetch<LedgerAccount>(`/funds/${fundId}/accounts`, {
+      method: "POST",
+      token,
+      body: { name, type, isAdministrative: type === "EXPENSE" ? isAdministrative : undefined },
+    });
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : "Something went wrong. Please try again." };
+  }
+
+  revalidatePath("/reports/chart-of-accounts");
+  return { error: null, success: true };
+}
+
 export async function updatePaymentAllocationPolicyAction(
   policy: PaymentAllocationPolicy,
 ): Promise<void> {
@@ -137,3 +204,56 @@ export async function resolveReconciliationExceptionAction(exceptionId: string):
   });
   revalidatePath("/ledger/reconciliation");
 }
+
+export interface BulkPaymentRow {
+  memberId: string;
+  fundId: string;
+  amountValue: string;
+  reference?: string;
+  namePreview: string;
+}
+
+export interface BulkPaymentResult {
+  successCount: number;
+  errorCount: number;
+  errors: string[];
+}
+
+export async function bulkRecordPaymentsAction(
+  rows: BulkPaymentRow[],
+): Promise<BulkPaymentResult> {
+  const { token } = await requireSession();
+
+  let successCount = 0;
+  let errorCount = 0;
+  const errors: string[] = [];
+
+  for (const row of rows) {
+    try {
+      await apiFetch("/payments/contribution", {
+        method: "POST",
+        token,
+        body: {
+          memberId: row.memberId,
+          fundId: row.fundId,
+          amountValue: row.amountValue,
+          currency: "GHS",
+          reference: row.reference || undefined,
+        },
+      });
+      successCount++;
+    } catch (err) {
+      errorCount++;
+      const msg = err instanceof ApiError 
+        ? err.message 
+        : err instanceof Error 
+          ? err.message 
+          : "Network error";
+      errors.push(`Row (${row.namePreview} - GHS ${row.amountValue}): ${msg}`);
+    }
+  }
+
+  revalidatePath("/ledger");
+  return { successCount, errorCount, errors };
+}
+

@@ -296,7 +296,15 @@ export interface LedgerAccount {
   memberId: string | null;
   type: LedgerAccountType;
   name: string;
+  isAdministrative: boolean;
   createdAt: string;
+}
+
+// POST /funds/:id/accounts
+export interface CreateLedgerAccountInput {
+  name: string;
+  type: LedgerAccountType;
+  isAdministrative?: boolean;
 }
 
 export interface Fund {
@@ -429,6 +437,245 @@ export interface ContributionsVsClaimsRow {
   month: string;
   contributions: string;
   claimsPaid: string;
+}
+
+// GET /reports/income-expenditure — a formal Income & Expenditure
+// Statement, derived fresh from INCOME/EXPENSE ledger accounts each
+// request. Fund transfers never appear here (they post against Fund
+// Equity, not Income/Expense — see LedgerService.transferBetweenFunds).
+export interface IncomeExpenditureLine {
+  ledgerAccountId: string;
+  accountName: string;
+  amount: string;
+}
+
+export interface IncomeExpenditureStatement {
+  incomeLines: IncomeExpenditureLine[];
+  expenseLines: IncomeExpenditureLine[];
+  totalIncome: string;
+  totalExpense: string;
+  surplusOrDeficit: string;
+  openingAccumulatedFund: string;
+  closingAccumulatedFund: string;
+}
+
+// GET /reports/trial-balance — every ledger account's net balance, shown
+// on whichever side it actually falls on rather than assumed from its
+// type (see ReportingService.trialBalance's comment on why).
+export interface TrialBalanceRow {
+  ledgerAccountId: string;
+  accountName: string;
+  accountType: LedgerAccountType;
+  fundName: string;
+  debitBalance: string;
+  creditBalance: string;
+}
+
+export interface TrialBalance {
+  asOf: string;
+  accounts: TrialBalanceRow[];
+  totalDebit: string;
+  totalCredit: string;
+  balanced: boolean;
+}
+
+// GET /reports/general-ledger/:ledgerAccountId
+export interface GeneralLedgerEntry {
+  journalEntryId: string;
+  date: string;
+  description: string;
+  sourceType: string | null;
+  isReversal: boolean;
+  debit: string;
+  credit: string;
+  runningBalance: string;
+}
+
+export interface GeneralLedgerReport {
+  ledgerAccountId: string;
+  accountName: string;
+  accountType: LedgerAccountType;
+  fundName: string;
+  openingBalance: string;
+  entries: GeneralLedgerEntry[];
+  closingBalance: string;
+}
+
+// POST /funds/:id/transfer
+export interface TransferFundsInput {
+  toFundId: string;
+  amountValue: string;
+  description?: string;
+}
+
+// Advanced reporting Phase B — Budget. ledgerAccountId doubles as the
+// Income/Expense Category (those categories already exist as real ledger
+// accounts — see BudgetService).
+export interface Budget {
+  id: string;
+  organisationId: string;
+  ledgerAccountId: string;
+  name: string | null;
+  periodStart: string;
+  periodEnd: string;
+  amountValue: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface CreateBudgetInput {
+  ledgerAccountId: string;
+  name?: string;
+  periodStart: string;
+  periodEnd: string;
+  amountValue: string;
+}
+
+export interface BudgetWithActual {
+  id: string;
+  ledgerAccountId: string;
+  accountName: string;
+  accountType: LedgerAccountType;
+  fundName: string;
+  name: string | null;
+  periodStart: string;
+  periodEnd: string;
+  budgeted: string;
+  actual: string;
+  variance: string;
+  variancePercent: string | null;
+  status: 'over_budget' | 'on_track' | 'underperforming';
+}
+
+// GET /reports/advance-contributions
+export interface AdvanceContributionRow {
+  memberId: string;
+  phoneNumber: string;
+  name: string | null;
+  creditBalance: string;
+  nextObligation: {
+    obligationId: string;
+    planName: string;
+    dueDate: string;
+    amountOutstanding: string;
+  } | null;
+}
+
+// GET /reports/arrears-allocation
+export interface ArrearsAllocationRow {
+  memberId: string;
+  phoneNumber: string | undefined;
+  obligationId: string;
+  contributionPeriod: string;
+  cashCollectionDate: string;
+  amount: string;
+  daysLate: number;
+}
+
+// GET /reports/benefit-expenditure
+export interface BenefitExpenditureRow {
+  benefitRuleId: string;
+  benefitName: string;
+  totalPaid: string;
+  beneficiaryCount: number;
+  averageBenefit: string;
+  statusCounts: {
+    submitted: number;
+    approved: number;
+    rejected: number;
+    paid: number;
+  };
+}
+
+export interface BenefitExpenditureAnalytics {
+  byBenefitType: BenefitExpenditureRow[];
+  totalBenefitsPaid: string;
+  totalContributionIncome: string;
+  benefitsAsPercentOfIncome: string | null;
+}
+
+// GET /reports/financial-health
+export interface ManagementRatiosAndHealth {
+  from: string;
+  to: string;
+  collectionRate: string | null;
+  arrearsRate: string | null;
+  benefitPayoutRatio: string | null;
+  fundUtilisationRate: string | null;
+  growthRate: string | null;
+  expenseRatio: string | null;
+  administrativeCostRatio: string | null;
+  notAvailable: string | null;
+  financialHealth: 'Healthy' | 'Watch' | 'At Risk' | 'Critical';
+  reason: string;
+}
+
+// GET /reports/cash-flow
+export interface CashFlowActivity {
+  inflow: string;
+  outflow: string;
+  net: string;
+}
+
+export interface CashFlowStatement {
+  fundId: string | null;
+  from: string;
+  to: string;
+  operating: CashFlowActivity;
+  financing: CashFlowActivity;
+  investing: CashFlowActivity & { note: string };
+  openingCash: string;
+  closingCash: string;
+  netCashMovement: string;
+  reconciles: boolean;
+}
+
+// GET /reports/fund-position
+export interface FundPositionRow {
+  fundId: string;
+  fundName: string;
+  openingFundBalance: string;
+  income: string;
+  expenses: string;
+  transfersIn: string;
+  transfersOut: string;
+  surplusOrDeficit: string;
+  closingFundBalance: string;
+  cashAvailable: string;
+  payables: string;
+}
+
+export interface FundPositionReport {
+  from: string;
+  to: string;
+  funds: FundPositionRow[];
+  organisationSummary: {
+    totalCashAvailable: string;
+    totalCommittedBenefits: string;
+    availableUncommittedFunds: string;
+    note: string;
+  };
+}
+
+// GET /reports/reversals
+export interface ReversalRow {
+  journalEntryId: string;
+  postedAt: string;
+  description: string;
+  sourceType: string | null;
+  amount: string;
+  originalEntryId: string | null;
+  originalDescription: string | null;
+  originalPostedAt: string | null;
+}
+
+export interface ReversalsAndAdjustments {
+  from: string;
+  to: string;
+  reversals: ReversalRow[];
+  grossCollection: string;
+  reversalsTotal: string;
+  netCollection: string;
 }
 
 export interface ReconciliationException {

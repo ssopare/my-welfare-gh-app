@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { Notification } from "@welfare/shared-types";
 import { NotificationBell } from "./notification-bell";
+import { PrintButton } from "./print-button";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
@@ -36,6 +37,8 @@ export function AppTopbar({
       </Button>
 
       <div className="ml-auto flex items-center gap-1">
+        <PrintButton />
+        <Separator orientation="vertical" className="mx-1 h-5" />
         <ThemeToggle />
         <NotificationBell notifications={notifications} />
         <Separator orientation="vertical" className="mx-1 h-5" />

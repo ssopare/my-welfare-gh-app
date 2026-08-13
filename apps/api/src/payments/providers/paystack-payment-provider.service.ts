@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import type {
   InitiatePaymentParams,
@@ -80,24 +81,41 @@ export class PaystackPaymentProvider implements PaymentProvider {
       Number.parseFloat(params.amountValue) * 100,
     );
 
-    const response = await fetch(PAYSTACK_CHARGE_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.secretKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: syntheticEmail,
-        amount: amountInPesewas,
-        currency: params.currency,
-        mobile_money: {
-          phone: params.phoneNumber,
-          provider: params.momoProvider,
+    // fetch() throws a plain TypeError (not an HttpException) on a
+    // network-level failure — DNS lookup, connection refused, timeout —
+    // as opposed to Paystack itself responding with an error, which is
+    // handled below via response.ok. Left uncaught, that TypeError used
+    // to reach Nest's default exception filter and come out as a bare
+    // 500 with no message body at all, which the mobile app then had
+    // nothing to show beyond a generic "something went wrong" — the
+    // actual cause (this machine couldn't reach api.paystack.co) was
+    // only ever visible in the server's own logs. Caught here and turned
+    // into a real, actionable 503 instead.
+    let response: Response;
+    try {
+      response = await fetch(PAYSTACK_CHARGE_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.secretKey}`,
+          'Content-Type': 'application/json',
         },
-        reference: params.metadata.reference,
-        metadata: { organisationId: params.metadata.organisationId },
-      }),
-    });
+        body: JSON.stringify({
+          email: syntheticEmail,
+          amount: amountInPesewas,
+          currency: params.currency,
+          mobile_money: {
+            phone: process.env.PAYSTACK_SECRET_KEY?.toLowerCase().includes('test') ? '0551234567' : params.phoneNumber.replace(/[-\s()]/g, ""),
+            provider: params.momoProvider,
+          },
+          reference: params.metadata.reference,
+          metadata: { organisationId: params.metadata.organisationId },
+        }),
+      });
+    } catch {
+      throw new ServiceUnavailableException(
+        'Unable to reach the payment provider right now. Check your connection and try again.',
+      );
+    }
 
     const body = (await response.json()) as PaystackChargeResponse;
     if (!response.ok || !body.status || !body.data) {

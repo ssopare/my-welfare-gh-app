@@ -33,7 +33,15 @@ export function AppShell({
           notifications={notifications}
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         />
-        <div className="flex-1 p-4 sm:p-6">{children}</div>
+        <div className="flex-1 p-4 sm:p-6">
+          <div
+            className="hidden print:block mb-4 border-b border-border pb-2 text-sm text-muted-foreground"
+            suppressHydrationWarning
+          >
+            {organisationName} · Printed {new Date().toLocaleString("en-GH")}
+          </div>
+          {children}
+        </div>
       </SidebarInset>
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
     </SidebarProvider>

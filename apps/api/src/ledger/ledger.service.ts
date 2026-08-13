@@ -1,13 +1,30 @@
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
+import type { LedgerAccount } from '../../generated/prisma/client';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { requireAdmin } from '../common/access.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
+import type { TransferFundsDto } from './dto/transfer-funds.dto';
+
+function findLedgerAccount(
+  accounts: LedgerAccount[],
+  fundName: string,
+  accountName: string,
+): LedgerAccount {
+  const account = accounts.find((a) => a.name === accountName);
+  if (!account) {
+    throw new BadRequestException(
+      `${fundName} has no "${accountName}" ledger account`,
+    );
+  }
+  return account;
+}
 
 export interface JournalLineInput {
   ledgerAccountId: string;
@@ -100,6 +117,106 @@ export class LedgerService {
         },
       },
       include: { lines: true },
+    });
+  }
+
+  // Moving money between two of an org's own funds — a real, admin-only
+  // capability, not a workaround. JournalEntry.fundId is required and
+  // singular (every entry belongs to exactly one fund), so a transfer is
+  // two separate, individually-balanced entries — one per fund — linked
+  // by a shared sourceId, exactly matching how the Income & Expenditure
+  // Reporting spec itself describes it: "Transfer Out in the source fund
+  // and Transfer In in the destination fund." Posted against each fund's
+  // existing Fund Equity account (not a new "Transfer In/Out" account
+  // type) deliberately: Equity is neither Income nor Expense, so a
+  // transfer nets to zero in the Income & Expenditure Statement and any
+  // consolidated report automatically, with no special-casing needed in
+  // the reporting queries.
+  async transferBetweenFunds(
+    actor: AuthTokenPayload,
+    fromFundId: string,
+    dto: TransferFundsDto,
+  ) {
+    await requireAdmin(this.rbac, actor);
+    if (fromFundId === dto.toFundId) {
+      throw new BadRequestException('Cannot transfer a fund to itself');
+    }
+    const amount = new Prisma.Decimal(dto.amountValue);
+    if (amount.lessThanOrEqualTo(0)) {
+      throw new BadRequestException(
+        'Transfer amount must be greater than zero',
+      );
+    }
+    const description = dto.description?.trim() || 'Fund transfer';
+    const transferId = randomUUID();
+
+    return this.prisma.withTenant(actor.organisationId, async (tx) => {
+      const [fromFund, toFund] = await Promise.all([
+        tx.fund.findUnique({
+          where: { id: fromFundId },
+          include: { ledgerAccounts: true },
+        }),
+        tx.fund.findUnique({
+          where: { id: dto.toFundId },
+          include: { ledgerAccounts: true },
+        }),
+      ]);
+      if (!fromFund) throw new NotFoundException('Source fund not found');
+      if (!toFund) throw new NotFoundException('Destination fund not found');
+
+      const fromCash = findLedgerAccount(
+        fromFund.ledgerAccounts,
+        fromFund.name,
+        'Cash',
+      );
+      const fromEquity = findLedgerAccount(
+        fromFund.ledgerAccounts,
+        fromFund.name,
+        'Fund Equity',
+      );
+      const toCash = findLedgerAccount(
+        toFund.ledgerAccounts,
+        toFund.name,
+        'Cash',
+      );
+      const toEquity = findLedgerAccount(
+        toFund.ledgerAccounts,
+        toFund.name,
+        'Fund Equity',
+      );
+
+      const outEntry = await this.postJournalEntryInTx(
+        tx,
+        actor.organisationId,
+        {
+          fundId: fromFundId,
+          description: `Transfer to ${toFund.name}: ${description}`,
+          sourceType: 'fund_transfer',
+          sourceId: transferId,
+          createdBy: actor.memberId,
+          lines: [
+            { ledgerAccountId: fromEquity.id, debit: amount.toString() },
+            { ledgerAccountId: fromCash.id, credit: amount.toString() },
+          ],
+        },
+      );
+      const inEntry = await this.postJournalEntryInTx(
+        tx,
+        actor.organisationId,
+        {
+          fundId: dto.toFundId,
+          description: `Transfer from ${fromFund.name}: ${description}`,
+          sourceType: 'fund_transfer',
+          sourceId: transferId,
+          createdBy: actor.memberId,
+          lines: [
+            { ledgerAccountId: toCash.id, debit: amount.toString() },
+            { ledgerAccountId: toEquity.id, credit: amount.toString() },
+          ],
+        },
+      );
+
+      return { transferId, outEntry, inEntry };
     });
   }
 

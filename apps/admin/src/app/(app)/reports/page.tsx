@@ -1,6 +1,23 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertTriangle, Banknote, LineChart, UserSearch } from "lucide-react";
+import {
+  Activity,
+  AlertCircle,
+  AlertTriangle,
+  ArrowRightLeft,
+  Banknote,
+  BookOpen,
+  HeartPulse,
+  Landmark,
+  LineChart,
+  PiggyBank,
+  Scale,
+  ScrollText,
+  Target,
+  Undo2,
+  UserSearch,
+  Wallet,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 export const metadata: Metadata = {
@@ -25,6 +42,78 @@ const REPORTS = [
     icon: Banknote,
     title: "Disbursement report",
     description: "Every paid benefit claim, its amount, and its full approver trail.",
+  },
+  {
+    href: "/reports/income-expenditure",
+    icon: ScrollText,
+    title: "Income & Expenditure Statement",
+    description: "Formal income and expenditure lines with a Surplus/(Deficit) total, by fund and period.",
+  },
+  {
+    href: "/reports/trial-balance",
+    icon: Scale,
+    title: "Trial Balance",
+    description: "Every ledger account's net balance, as of any date — flags a real imbalance instead of hiding it.",
+  },
+  {
+    href: "/reports/general-ledger",
+    icon: BookOpen,
+    title: "General Ledger",
+    description: "Every line posted to one account, in order, with a running balance.",
+  },
+  {
+    href: "/reports/chart-of-accounts",
+    icon: Landmark,
+    title: "Chart of Accounts",
+    description: "Every fund's standard chart — Cash, Income, Payable, Expense, and Equity accounts.",
+  },
+  {
+    href: "/reports/budget-vs-actual",
+    icon: Target,
+    title: "Budget vs. Actual",
+    description: "Set a target for any Income or Expense account and track it against real ledger activity.",
+  },
+  {
+    href: "/reports/advance-contributions",
+    icon: PiggyBank,
+    title: "Advance Contributions",
+    description: "Members currently carrying a credit balance from an overpayment, and what it will cover next.",
+  },
+  {
+    href: "/reports/arrears-allocation",
+    icon: AlertCircle,
+    title: "Arrears Allocation",
+    description: "Every contribution payment's real period vs. its actual cash-collection date.",
+  },
+  {
+    href: "/reports/benefit-expenditure",
+    icon: HeartPulse,
+    title: "Benefit Expenditure Analytics",
+    description: "Every claim at every lifecycle stage, grouped by benefit type — not just the paid ones.",
+  },
+  {
+    href: "/reports/financial-health",
+    icon: Activity,
+    title: "Financial Health",
+    description: "Collection, arrears, payout, and utilisation ratios rolled up into one overall status.",
+  },
+  {
+    href: "/reports/cash-flow",
+    icon: ArrowRightLeft,
+    title: "Cash Flow Statement",
+    description: "Operating, financing, and investing activity, opening cash through to closing cash.",
+  },
+  {
+    href: "/reports/fund-position",
+    icon: Wallet,
+    title: "Fund Position Report",
+    description: "Every fund's opening/closing balance, income, expenses, transfers, cash, and payables.",
+  },
+  {
+    href: "/reports/reversals",
+    icon: Undo2,
+    title: "Reversals & Adjustments",
+    description: "Every reversal linked to its original entry, plus Gross/Net collection for the period.",
   },
 ];
 

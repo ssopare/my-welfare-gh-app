@@ -1,17 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronRight, ShieldAlert, Users } from "lucide-react";
-import { MemberAvatar } from "@/components/members/member-avatar";
-import { StatusBadge } from "@/components/finance/status-badge";
+import { ShieldAlert, Users } from "lucide-react";
 import { FilterChip } from "@/components/ui/filter-chip";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { BulkImportMembersDialog } from "@/components/members/bulk-import-members-dialog";
+import { MembersTable } from "@/components/members/members-table";
 import { apiFetchOrNull } from "@/lib/api-client";
 import { requireSession } from "@/lib/session";
 import { MEMBER_STATUS_META } from "@/lib/status-meta";
@@ -66,6 +58,8 @@ export default async function MembersPage({
         ? members
         : members.filter((m) => m.status !== "EXITED");
 
+  const pendingMemberIds = members?.filter((m) => m.status === "PENDING").map((m) => m.id) ?? [];
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -75,15 +69,18 @@ export default async function MembersPage({
             {members ? `${activeRosterCount} member${activeRosterCount === 1 ? "" : "s"} on the active roster.` : "The member directory."}
           </p>
         </div>
-        {pendingRemovals && pendingRemovals.length > 0 && (
-          <Link
-            href="/members/removal-requests"
-            className="inline-flex items-center gap-1.5 rounded-full border border-status-warn-border bg-status-warn-bg px-3 py-1.5 text-sm font-medium text-status-warn"
-          >
-            <ShieldAlert className="size-4" aria-hidden />
-            {pendingRemovals.length} pending removal{pendingRemovals.length === 1 ? "" : "s"}
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          {pendingRemovals && pendingRemovals.length > 0 && (
+            <Link
+              href="/members/removal-requests"
+              className="inline-flex items-center gap-1.5 rounded-full border border-status-warn-border bg-status-warn-bg px-3 py-1.5 text-sm font-medium text-status-warn"
+            >
+              <ShieldAlert className="size-4" aria-hidden />
+              {pendingRemovals.length} pending removal{pendingRemovals.length === 1 ? "" : "s"}
+            </Link>
+          )}
+          <BulkImportMembersDialog />
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
@@ -115,48 +112,7 @@ export default async function MembersPage({
           <p className="text-sm text-muted-foreground">No members match this filter.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-glass-border bg-glass-card/65 shadow-lg backdrop-blur-md transition-all duration-300 hover:shadow-xl dark:bg-glass-card/45">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Member</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Chapter</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead className="w-8" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((member) => (
-                <TableRow key={member.id} className="group transition-colors duration-150 hover:bg-primary/5">
-                  <TableCell>
-                    <Link href={`/members/${member.id}`} className="flex items-center gap-3">
-                      <MemberAvatar name={member.account.name} phoneNumber={member.account.phoneNumber} size="sm" />
-                      <span className="flex flex-col">
-                        {member.account.name && <span className="text-sm font-medium">{member.account.name}</span>}
-                        <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                          {member.account.phoneNumber}
-                        </span>
-                      </span>
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-sm capitalize text-muted-foreground">{member.category}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{member.chapter?.name ?? "—"}</TableCell>
-                  <TableCell>
-                    <StatusBadge {...MEMBER_STATUS_META[member.status]} />
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(member.joinDate)}</TableCell>
-                  <TableCell>
-                    <Link href={`/members/${member.id}`}>
-                      <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
-                    </Link>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <MembersTable members={filtered} />
       )}
     </div>
   );

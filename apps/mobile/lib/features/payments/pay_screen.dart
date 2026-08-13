@@ -1,7 +1,9 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/api/api_client.dart';
 import '../../core/models/fund.dart';
 import '../../core/models/obligation.dart';
 import '../../core/models/organisation.dart';
@@ -158,9 +160,15 @@ class _PayScreenState extends ConsumerState<PayScreen> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => PaymentPendingScreen(intentId: intent.id)),
       );
-    } catch (_) {
+    } catch (error) {
       setState(() {
-        _error = 'Something went wrong starting this payment. Please try again.';
+        // Surfaces the API's real message (e.g. "Unable to reach the
+        // payment provider right now...") instead of a fixed generic
+        // string — this used to swallow the actual reason, which was
+        // exactly why repeated failures never got clearer.
+        _error = error is DioException
+            ? error.toApiException().message
+            : 'Something went wrong starting this payment. Please try again.';
         _isSubmitting = false;
       });
     }

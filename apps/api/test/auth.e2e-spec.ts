@@ -40,7 +40,11 @@ describe('Auth (e2e)', () => {
   });
 
   afterAll(async () => {
-    for (const organisationId of createdOrgIds) {
+    // Deduped: a member joining their own founder's org (see "an ordinary
+    // member ... can found a brand-new organisation") tracks the same
+    // organisationId twice — once via the founder identity, once via the
+    // member identity that joined it.
+    for (const organisationId of new Set(createdOrgIds)) {
       await prisma.withTenant(organisationId, (tx) =>
         tx.roleAssignment.deleteMany({ where: { organisationId } }),
       );
@@ -272,20 +276,27 @@ describe('Auth (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/auth/organisations')
       .set('Authorization', `Bearer ${registered.accessToken}`)
-      .send({ legalName: 'Founder Second Org', organisationType: 'employer-linked' })
+      .send({
+        legalName: 'Founder Second Org',
+        organisationType: 'employer-linked',
+      })
       .expect(201);
     const { accessToken: secondToken } = res.body as AccessTokenResponse;
 
     const secondIdentity = await me(secondToken);
     expect(secondIdentity.sub).toBe(firstIdentity.sub);
-    expect(secondIdentity.organisationId).not.toBe(firstIdentity.organisationId);
+    expect(secondIdentity.organisationId).not.toBe(
+      firstIdentity.organisationId,
+    );
     expect(secondIdentity.role).toBe('ADMIN');
     createdOrgIds.push(secondIdentity.organisationId);
 
     // The original membership is untouched — same account, two fully
     // independent ADMIN memberships.
     const firstIdentityAgain = await me(registered.accessToken);
-    expect(firstIdentityAgain.organisationId).toBe(firstIdentity.organisationId);
+    expect(firstIdentityAgain.organisationId).toBe(
+      firstIdentity.organisationId,
+    );
     expect(firstIdentityAgain.role).toBe('ADMIN');
   });
 
@@ -322,16 +333,22 @@ describe('Auth (e2e)', () => {
       .set('Authorization', `Bearer ${memberToken}`)
       .send({ legalName: 'Member-Founded Org', organisationType: 'voluntary' })
       .expect(201);
-    const newOrgIdentity = await me((res.body as AccessTokenResponse).accessToken);
+    const newOrgIdentity = await me(
+      (res.body as AccessTokenResponse).accessToken,
+    );
     expect(newOrgIdentity.sub).toBe(memberIdentity.sub);
     expect(newOrgIdentity.role).toBe('ADMIN');
-    expect(newOrgIdentity.organisationId).not.toBe(memberIdentity.organisationId);
+    expect(newOrgIdentity.organisationId).not.toBe(
+      memberIdentity.organisationId,
+    );
     createdOrgIds.push(newOrgIdentity.organisationId);
 
     // Their original MEMBER membership is untouched by founding a new org.
     const memberIdentityAgain = await me(memberToken);
     expect(memberIdentityAgain.role).toBe('MEMBER');
-    expect(memberIdentityAgain.organisationId).toBe(founderIdentity.organisationId);
+    expect(memberIdentityAgain.organisationId).toBe(
+      founderIdentity.organisationId,
+    );
   });
 
   it('rejects founding an additional organisation with no token, and with an invalid type', async () => {

@@ -164,7 +164,12 @@ export class AuthService {
     if (!orgAdminRoleId) {
       throw new Error('Org Admin starter role template failed to seed');
     }
-    await this.rbac.assignRoleInTx(tx, organisationId, created.id, orgAdminRoleId);
+    await this.rbac.assignRoleInTx(
+      tx,
+      organisationId,
+      created.id,
+      orgAdminRoleId,
+    );
 
     // §18.1: "Free Trial: every new tenant, automatically."
     await this.subscriptions.createTrialInTx(tx, organisationId);
@@ -176,9 +181,10 @@ export class AuthService {
   // retrying on the astronomically unlikely chance of a collision (5
   // random chars from a 32-symbol alphabet — see generateJoinCode) rather
   // than trusting it never happens.
-  private async provisionOrganisationWithJoinCode(
-    dto: { legalName: string; organisationType: string },
-  ) {
+  private async provisionOrganisationWithJoinCode(dto: {
+    legalName: string;
+    organisationType: string;
+  }) {
     for (
       let attempt = 1;
       attempt <= JOIN_CODE_GENERATION_ATTEMPTS;

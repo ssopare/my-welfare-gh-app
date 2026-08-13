@@ -32,7 +32,7 @@ export function PolicyDialog({ policy }: { policy: DefaulterPolicy | null }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" className="print:hidden">
           <Settings2 aria-hidden />
           {policy ? "Edit policy" : "Set up policy"}
         </Button>

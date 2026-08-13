@@ -296,3 +296,80 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: var(--muted-foreground);
 }
+
+/* Printable reports — window.print() is the document/PDF path (every
+   browser's print dialog offers "Save as PDF" as a destination). Hides
+   the app shell chrome so only a report's own title/data prints; see
+   AppShell's print-only masthead line for the organisation/timestamp
+   header this leaves in place of the topbar. */
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+  }
+  [data-slot="sidebar"],
+  [data-slot="sidebar-gap"],
+  [data-slot="sidebar-inset"] > header {
+    display: none !important;
+  }
+  [data-slot="sidebar-inset"] {
+    margin: 0 !important;
+  }
+
+  /* Document contrast, not screen-UI contrast: the on-screen palette
+     leans on a soft muted-foreground grey for secondary text (readable
+     against a light UI background), but that same grey prints washed-out
+     and near-illegible on white paper. Force near-black text and a plain
+     white surface for every report, in both light and dark mode. */
+  :root,
+  .dark {
+    --background: #ffffff !important;
+    --foreground: #000000 !important;
+    --card: #ffffff !important;
+    --card-foreground: #000000 !important;
+    --muted: #ffffff !important;
+    --muted-foreground: #333333 !important;
+    --border: #999999 !important;
+  }
+  * {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+  .shell-ambient {
+    background: white !important;
+  }
+
+  /* A report "card" on paper is a plain ruled box, not a soft glass
+     panel — flatten the rounded/shadowed screen treatment. */
+  [data-slot="card"] {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    break-inside: avoid;
+  }
+
+  /* Table.tsx wraps every table in `overflow-x-auto` for on-screen
+     horizontal scrolling; report pages additionally wrap that in an
+     `overflow-hidden` rounded box for the card look. Both clip content
+     on paper (there's no scrolling) and Chrome renders the scrollbar
+     track itself into the print output — so let every table's real
+     width flow onto the page instead of clipping it. */
+  [data-slot="table-container"],
+  .overflow-hidden,
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+  table {
+    width: 100% !important;
+    font-size: 11px;
+  }
+  table thead {
+    display: table-header-group;
+  }
+  tr {
+    break-inside: avoid;
+  }
+
+  @page {
+    margin: 1.5cm;
+  }
+}

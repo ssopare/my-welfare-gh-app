@@ -95,6 +95,9 @@ describe('Ledger (e2e)', () => {
         tx.obligation.deleteMany({ where: { organisationId } }),
       );
       await prisma.withTenant(organisationId, (tx) =>
+        tx.budget.deleteMany({ where: { organisationId } }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
         tx.ledgerAccount.deleteMany({ where: { organisationId } }),
       );
       await prisma.withTenant(organisationId, (tx) =>
@@ -1132,5 +1135,148 @@ describe('Ledger (e2e)', () => {
         ],
       }),
     ).rejects.toThrow('exactly one of debit or credit');
+  });
+
+  it('transfers between two funds, moving Cash and leaving both sides linked and balanced; non-admin cannot', async () => {
+    const admin = await registerOrganisation('Ledger Fund Transfer Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const generalFund = await createFund(admin.accessToken);
+    const medicalFundRes = await request(app.getHttpServer())
+      .post('/funds')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ name: 'Medical Fund' })
+      .expect(201);
+    const medicalFund = medicalFundRes.body as FundResponse;
+
+    const plan = await createActivePlan(
+      admin.accessToken,
+      '500.00',
+      'one_time',
+    );
+    await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2020-01-01',
+    );
+    await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: generalFund.id,
+        amountValue: '500.00',
+        currency: 'GHS',
+      })
+      .expect(201);
+
+    // Non-admin cannot transfer.
+    await request(app.getHttpServer())
+      .post(`/funds/${generalFund.id}/transfer`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({ toFundId: medicalFund.id, amountValue: '150.00' })
+      .expect(403);
+
+    const transferRes = await request(app.getHttpServer())
+      .post(`/funds/${generalFund.id}/transfer`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        toFundId: medicalFund.id,
+        amountValue: '150.00',
+        description: 'Seeding the medical fund',
+      })
+      .expect(201);
+    const transfer = transferRes.body as {
+      transferId: string;
+      outEntry: { id: string; fundId: string };
+      inEntry: { id: string; fundId: string };
+    };
+    expect(transfer.outEntry.fundId).toBe(generalFund.id);
+    expect(transfer.inEntry.fundId).toBe(medicalFund.id);
+
+    const generalCash = findAccount(generalFund, 'Cash');
+    const medicalCash = findAccount(medicalFund, 'Cash');
+    const generalBalanceRes = await request(app.getHttpServer())
+      .get(`/ledger-accounts/${generalCash.id}/balance`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const medicalBalanceRes = await request(app.getHttpServer())
+      .get(`/ledger-accounts/${medicalCash.id}/balance`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    expect((generalBalanceRes.body as BalanceResponse).balance).toBe('350');
+    expect((medicalBalanceRes.body as BalanceResponse).balance).toBe('150');
+
+    // Rejects a self-transfer and a non-positive amount.
+    await request(app.getHttpServer())
+      .post(`/funds/${generalFund.id}/transfer`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ toFundId: generalFund.id, amountValue: '10.00' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(`/funds/${generalFund.id}/transfer`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ toFundId: medicalFund.id, amountValue: '0.00' })
+      .expect(400);
+  });
+
+  it('an admin can extend a fund with a custom account; non-admin and duplicate names are rejected', async () => {
+    const admin = await registerOrganisation('Ledger Custom Account Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+
+    await request(app.getHttpServer())
+      .post(`/funds/${fund.id}/accounts`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({
+        name: 'Administrative Expenses',
+        type: 'EXPENSE',
+        isAdministrative: true,
+      })
+      .expect(403);
+
+    const createRes = await request(app.getHttpServer())
+      .post(`/funds/${fund.id}/accounts`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Administrative Expenses',
+        type: 'EXPENSE',
+        isAdministrative: true,
+      })
+      .expect(201);
+    const account = createRes.body as LedgerAccountResponse & {
+      isAdministrative: boolean;
+    };
+    expect(account.type).toBe('EXPENSE');
+    expect(account.isAdministrative).toBe(true);
+
+    // Immediately shows up nested on the fund, and is usable as a Budget
+    // target with no other change required anywhere else.
+    const fundRes = await request(app.getHttpServer())
+      .get(`/funds/${fund.id}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    expect(
+      (fundRes.body as FundResponse).ledgerAccounts.some(
+        (a) => a.id === account.id,
+      ),
+    ).toBe(true);
+    await request(app.getHttpServer())
+      .post('/budgets')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        ledgerAccountId: account.id,
+        periodStart: '2020-01-01',
+        periodEnd: '2030-12-31',
+        amountValue: '100.00',
+      })
+      .expect(201);
+
+    // A duplicate name on the same fund is rejected.
+    await request(app.getHttpServer())
+      .post(`/funds/${fund.id}/accounts`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ name: 'Administrative Expenses', type: 'EXPENSE' })
+      .expect(400);
   });
 });

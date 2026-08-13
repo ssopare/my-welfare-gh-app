@@ -5,6 +5,7 @@ import '../../core/models/claim.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/money_text.dart';
 import '../activity/activity_screen.dart';
+import '../auth/auth_controller.dart';
 import '../payments/pay_screen.dart';
 import '../claims/claims_screen.dart';
 import '../claims/new_claim_screen.dart';
@@ -46,7 +47,15 @@ class HomeScreen extends ConsumerWidget {
           child: RefreshIndicator(
             onRefresh: () => ref.refresh(homeDataProvider.future),
             child: homeData.when(
-              data: (data) => _HomeContent(data: data),
+              data: (data) {
+                if (data.profile.status == 'PENDING') {
+                  return _PendingApprovalState(
+                    organisationName: data.organisation.legalName,
+                    onRetry: () => ref.refresh(homeDataProvider.future),
+                  );
+                }
+                return _HomeContent(data: data);
+              },
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => _ErrorState(
                 message: error.toString(),
@@ -177,33 +186,54 @@ class _HomeContent extends ConsumerWidget {
                 ),
               ],
             ),
-            Stack(
+            Row(
               children: [
                 IconButton(
                   icon: Icon(
-                    Icons.notifications_outlined,
+                    Icons.group_add_outlined,
                     color: isDark ? AppColors.foregroundDark : AppColors.foregroundLight,
                   ),
                   onPressed: () {
-                    // Action triggers notification feed
+                    final identity = ref.read(authControllerProvider).identity;
+                    if (identity != null) {
+                      _showJoinGroupDialog(
+                        context,
+                        ref,
+                        identity.sub,
+                        data.profile.name ?? '',
+                      );
+                    }
                   },
                 ),
-                if (data.unreadNotificationCount > 0)
-                  Positioned(
-                    right: 8,
-                    top: 8,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
+                Stack(
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        Icons.notifications_outlined,
+                        color: isDark ? AppColors.foregroundDark : AppColors.foregroundLight,
                       ),
-                      constraints: const BoxConstraints(
-                        minWidth: 8,
-                        minHeight: 8,
-                      ),
+                      onPressed: () {
+                        // Action triggers notification feed
+                      },
                     ),
-                  ),
+                    if (data.unreadNotificationCount > 0)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 8,
+                            minHeight: 8,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ],
@@ -866,3 +896,197 @@ class _QuickActionCard extends StatelessWidget {
     );
   }
 }
+
+class _PendingApprovalState extends ConsumerWidget {
+  const _PendingApprovalState({
+    required this.organisationName,
+    required this.onRetry,
+  });
+
+  final String organisationName;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.lock_person_outlined,
+              size: 72,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 32),
+          Text(
+            'Application Pending',
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isDark ? AppColors.foregroundDark : AppColors.foregroundLight,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Your membership application to join $organisationName is currently under review.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: isDark ? AppColors.mutedForegroundDark : AppColors.mutedForegroundLight,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'To protect the community\'s privacy and financial records, you will gain access once an administrator approves your account.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: isDark ? AppColors.mutedForegroundDark.withValues(alpha: 0.7) : AppColors.mutedForegroundLight.withValues(alpha: 0.7),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 48),
+          ElevatedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Check Status'),
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size.fromHeight(50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () {
+              ref.read(authControllerProvider).logout();
+            },
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+void _showJoinGroupDialog(BuildContext context, WidgetRef ref, String phoneNumber, String currentName) {
+  final joinCodeController = TextEditingController();
+  final passwordController = TextEditingController();
+  bool obscurePassword = true;
+  bool isSubmitting = false;
+
+  showDialog(
+    context: context,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setState) {
+          final theme = Theme.of(context);
+          return AlertDialog(
+            title: const Text('Join Another Group'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Enter the Join Code of the new welfare association. To verify it\'s you, please confirm your password.',
+                  style: TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: joinCodeController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'JOIN CODE',
+                    hintText: 'e.g. SJ-4K7P2',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: passwordController,
+                  obscureText: obscurePassword,
+                  decoration: InputDecoration(
+                    labelText: 'CONFIRM PASSWORD',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        obscurePassword ? Icons.visibility_off : Icons.visibility,
+                      ),
+                      onPressed: () {
+                        setState(() => obscurePassword = !obscurePassword);
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting ? null : () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        final code = joinCodeController.text.trim();
+                        final pass = passwordController.text;
+                        if (code.isEmpty || pass.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Please fill all fields')),
+                          );
+                          return;
+                        }
+
+                        setState(() => isSubmitting = true);
+                        final success = await ref.read(authControllerProvider).joinOrganisation(
+                              phoneNumber: phoneNumber,
+                              password: pass,
+                              joinCode: code,
+                              name: currentName,
+                            );
+                        if (!context.mounted) return;
+                        setState(() => isSubmitting = false);
+
+                        if (success) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Application submitted successfully! Waiting for admin approval.'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } else {
+                          final errorMsg = ref.read(authControllerProvider).lastError ?? 'Failed to join group.';
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(errorMsg),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Join'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
