@@ -23,8 +23,8 @@ export function GenerateObligationsForm({ planId, members }: { planId: string; m
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const phoneById = useMemo(
-    () => new Map(members.map((m) => [m.id, m.account.phoneNumber])),
+  const memberById = useMemo(
+    () => new Map(members.map((m) => [m.id, m])),
     [members],
   );
 
@@ -63,14 +63,18 @@ export function GenerateObligationsForm({ planId, members }: { planId: string; m
           <div className="max-h-64 overflow-y-auto rounded-lg border border-border/60">
             <div className="flex flex-col divide-y divide-border">
               {members.map((member) => (
-                <label key={member.id} className="flex items-center gap-2.5 px-3 py-2 text-sm">
+                <label key={member.id} className="flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-muted/30">
                   <Checkbox
                     name="memberIds"
                     value={member.id}
                     checked={selectedIds.has(member.id)}
                     onCheckedChange={(checked) => toggle(member.id, checked === true)}
+                    className="mt-0.5"
                   />
-                  <span className="font-mono tabular-nums">{member.account.phoneNumber}</span>
+                  <div className="flex flex-col">
+                    <span className="font-medium text-foreground">{member.account.name || "Unnamed Member"}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{member.account.phoneNumber}</span>
+                  </div>
                 </label>
               ))}
             </div>
@@ -92,11 +96,15 @@ export function GenerateObligationsForm({ planId, members }: { planId: string; m
           </span>
           {state.failures && state.failures.length > 0 && (
             <ul className="list-inside list-disc text-status-bad">
-              {state.failures.map((failure) => (
-                <li key={failure.memberId}>
-                  {phoneById.get(failure.memberId) ?? failure.memberId}: {failure.message}
-                </li>
-              ))}
+              {state.failures.map((failure) => {
+                const m = memberById.get(failure.memberId);
+                const displayName = m ? `${m.account.name} (${m.account.phoneNumber})` : failure.memberId;
+                return (
+                  <li key={failure.memberId}>
+                    {displayName}: {failure.message}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

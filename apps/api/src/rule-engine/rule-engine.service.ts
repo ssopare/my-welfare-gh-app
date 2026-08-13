@@ -71,6 +71,24 @@ export class RuleEngineService {
         );
       }
 
+      // 1. Beneficiary Exemption: Beneficiaries of the plan are exempt from paying
+      if (plan.beneficiaryMemberIds?.includes(memberId)) {
+        throw new BadRequestException(
+          'Member is a beneficiary of this plan and is exempt from contributing.',
+        );
+      }
+
+      // 2. Defaulter / Suspended Exemption: Exempt them from one-time events until active/cleared
+      if (
+        plan.cadence === 'one_time' &&
+        plan.goodStandingRequired &&
+        (member.status === 'DEFAULTER' || member.status === 'SUSPENDED')
+      ) {
+        throw new BadRequestException(
+          'Member is currently suspended or in default and is exempt from contributing until cleared.',
+        );
+      }
+
       return {
         planId: plan.id,
         memberId,

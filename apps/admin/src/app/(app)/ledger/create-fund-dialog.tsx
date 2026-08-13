@@ -22,7 +22,7 @@ const INITIAL_STATE: FormActionState = { error: null };
 // Benefits Payable/Expense, Fund Equity) is provisioned automatically the
 // moment this succeeds — nothing else to configure here, so this stays a
 // one-field dialog rather than a bigger settings form.
-export function CreateFundDialog() {
+export function CreateFundDialog({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const [state, formAction, isPending] = useActionState(createFundAction, INITIAL_STATE);
 
@@ -35,7 +35,7 @@ export function CreateFundDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" className={className}>
           <Plus aria-hidden />
           New fund
         </Button>

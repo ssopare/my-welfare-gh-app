@@ -21,6 +21,7 @@ import { RecordPaymentDialog } from "./record-payment-dialog";
 import { ReverseEntryDialog } from "./reverse-entry-dialog";
 import { TransferFundsDialog } from "./transfer-funds-dialog";
 import { BulkUploadPaymentsDialog } from "@/components/finance/bulk-upload-payments-dialog";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 
 export const metadata: Metadata = {
   title: "Ledger — Welfare Platform",
@@ -69,26 +70,38 @@ export default async function LedgerPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Ledger</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Fund balances and posted transactions. Every entry is balanced — nothing here is a stored, editable number.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/ledger/reconciliation">Reconciliation</Link>
-          </Button>
-          <CreateFundDialog />
-          {funds && members && (
-            <>
-              <BulkUploadPaymentsDialog members={members} funds={funds} />
-              <RecordPaymentDialog funds={funds} members={members} organisation={organisation} />
-            </>
-          )}
-        </div>
-      </div>
+      <DashboardHeader
+        title="Welfare"
+        highlightedText="Ledger"
+        subtitle="Fund balances and posted transactions. Every entry is balanced — nothing here is a stored, editable number."
+        icon={Landmark}
+        badgeText="Financial Registry"
+        rightAction={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-white/20 bg-white/5 hover:bg-white/10 hover:text-white text-white font-bold uppercase tracking-widest text-[9px] h-9 px-4 rounded-xl shadow-md transition-all"
+              asChild
+            >
+              <Link href="/ledger/reconciliation">Reconciliation</Link>
+            </Button>
+            <CreateFundDialog
+              className="border-white/20 bg-white/5 hover:bg-white/10 hover:text-white text-white font-bold uppercase tracking-widest text-[9px] h-9 px-4 rounded-xl shadow-md transition-all"
+            />
+            {funds && members && (
+              <>
+                <BulkUploadPaymentsDialog
+                  members={members}
+                  funds={funds}
+                  className="border-white/20 bg-white/5 hover:bg-white/10 hover:text-white text-white font-bold uppercase tracking-widest text-[9px] h-9 px-4 rounded-xl shadow-md transition-all"
+                />
+                <RecordPaymentDialog funds={funds} members={members} organisation={organisation} />
+              </>
+            )}
+          </div>
+        }
+      />
 
       {organisation && <PaymentAllocationSetting policy={organisation.paymentAllocationPolicy} />}
 

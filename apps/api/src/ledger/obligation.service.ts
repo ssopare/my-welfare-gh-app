@@ -360,7 +360,7 @@ export class ObligationService {
     // (park the rest as credit balance instead).
     let monthlyExtensionEligible = false;
     if (remaining.greaterThan(0) && otherObligations.length === 0) {
-      const anchor =
+      let anchor =
         monthlyObligations.length > 0
           ? monthlyObligations[monthlyObligations.length - 1]
           : await tx.obligation.findFirst({
@@ -371,6 +371,45 @@ export class ObligationService {
               orderBy: { dueDate: 'desc' },
               include: { contributionPlan: true },
             });
+
+      if (!anchor) {
+        // Fallback: check if there's an active monthly plan for this member's organisation/chapter
+        const member = await tx.member.findUnique({
+          where: { id: dto.memberId },
+          select: { chapterId: true, organisationId: true },
+        });
+        if (member) {
+          const fallbackPlan = await tx.contributionPlan.findFirst({
+            where: {
+              organisationId: member.organisationId,
+              cadence: 'monthly',
+              status: 'ACTIVE',
+              OR: [
+                { chapterId: member.chapterId },
+                { chapterId: null },
+              ],
+            },
+            orderBy: { chapterId: 'desc' }, // prioritize chapter-specific plans
+          });
+          if (fallbackPlan) {
+            const today = new Date();
+            const startOfMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+            anchor = {
+              id: '',
+              organisationId: member.organisationId,
+              memberId: dto.memberId,
+              contributionPlanId: fallbackPlan.id,
+              dueDate: startOfMonth,
+              amountValue: fallbackPlan.amountValue,
+              currency: fallbackPlan.currency,
+              amountPaid: new Prisma.Decimal(0),
+              status: 'DUE',
+              createdAt: today,
+              contributionPlan: fallbackPlan,
+            } as any;
+          }
+        }
+      }
 
       if (anchor) {
         // The anchor is whichever plan version the member's last-touched

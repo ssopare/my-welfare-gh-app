@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useMemo, useState, useTransition } from "react";
 import { Loader2, Plus } from "lucide-react";
 import { MoneyDisplay } from "@/components/finance/money-display";
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,17 @@ export function RecordPaymentDialog({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isLoadingObligations, startLoadingObligations] = useTransition();
   const [typedAmount, setTypedAmount] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredMembers = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return members;
+    return members.filter(
+      (m: Member) =>
+        m.account.name?.toLowerCase().includes(q) ||
+        m.account.phoneNumber?.toLowerCase().includes(q),
+    );
+  }, [members, searchQuery]);
 
   function resetForm() {
     setMemberId("");
@@ -74,6 +85,7 @@ export function RecordPaymentDialog({
     setOpenObligations([]);
     setSelectedIds(new Set());
     setTypedAmount("");
+    setSearchQuery("");
     setErrorDismissed(true);
   }
 
@@ -195,18 +207,29 @@ export function RecordPaymentDialog({
         <form action={formAction} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="memberId">Member</Label>
-            <Select name="memberId" value={memberId} onValueChange={handleMemberChange}>
-              <SelectTrigger id="memberId" className="w-full">
-                <SelectValue placeholder="Choose a member" />
-              </SelectTrigger>
-              <SelectContent>
-                {members.map((member) => (
-                  <SelectItem key={member.id} value={member.id}>
-                    {member.account.phoneNumber}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex flex-col gap-2">
+              <Input
+                placeholder="Search member by name or phone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-9 text-xs"
+              />
+              <Select name="memberId" value={memberId} onValueChange={handleMemberChange}>
+                <SelectTrigger id="memberId" className="w-full">
+                  <SelectValue placeholder="Choose a member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.account.name || "Unnamed Member"} ({member.account.phoneNumber})
+                    </SelectItem>
+                  ))}
+                  {filteredMembers.length === 0 && (
+                    <p className="p-2 text-xs text-muted-foreground text-center">No matching members found</p>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {memberId && (

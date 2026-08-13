@@ -4,6 +4,7 @@ import { useState, useTransition, useRef } from "react";
 import { Loader2, Upload, AlertCircle, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,7 @@ import { bulkRecordPaymentsAction, type BulkPaymentRow, type BulkPaymentResult }
 interface BulkUploadPaymentsDialogProps {
   members: Member[];
   funds: Fund[];
+  className?: string;
 }
 
 interface ParsedRow {
@@ -32,7 +34,7 @@ interface ParsedRow {
   resolvedFund?: Fund;
 }
 
-export function BulkUploadPaymentsDialog({ members, funds }: BulkUploadPaymentsDialogProps) {
+export function BulkUploadPaymentsDialog({ members, funds, className }: BulkUploadPaymentsDialogProps) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
@@ -230,7 +232,7 @@ export function BulkUploadPaymentsDialog({ members, funds }: BulkUploadPaymentsD
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
+        <Button variant="outline" size="sm" className={cn("gap-2", className)}>
           <Upload className="size-4" />
           Bulk upload payments
         </Button>

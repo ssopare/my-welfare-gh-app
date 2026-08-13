@@ -270,6 +270,7 @@ model ContributionPlan {
   reminderDaysBeforeDue            Int?
   minTenureMonths                  Int?
   goodStandingRequired             Boolean    @default(true)
+  beneficiaryMemberIds             String[]   @default([])
   status                           RuleStatus @default(DRAFT)
   effectiveFrom                    DateTime?
   effectiveTo                      DateTime?

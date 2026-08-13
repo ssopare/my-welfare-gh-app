@@ -87,11 +87,11 @@
 }
 
 .dark {
-  --glass-card: rgba(21, 24, 39, 0.6);
-  --glass-border: rgba(38, 43, 61, 0.6);
+  --glass-card: rgba(25, 30, 50, 0.4);
+  --glass-border: rgba(60, 70, 110, 0.4);
 
-  --ambient-1: 30%;
-  --ambient-2: 22%;
+  --ambient-1: 65%;
+  --ambient-2: 45%;
 
   --background: #0b0d14;
   --foreground: #f1f1f6;

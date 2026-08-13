@@ -101,10 +101,43 @@ export class ContributionPlanService {
         });
       }
 
-      return tx.contributionPlan.update({
+      const updatedPlan = await tx.contributionPlan.update({
         where: { id },
         data: { status: 'ACTIVE', effectiveFrom, approvedBy: actor.memberId },
       });
+
+      // Auto-generate obligations for all eligible members for one-time contributions on activation
+      if (updatedPlan.cadence === 'one_time') {
+        const members = await tx.member.findMany({
+          where: {
+            organisationId: actor.organisationId,
+            status: { in: ['ACTIVE', 'PROBATION', 'GRACE'] },
+            chapterId: updatedPlan.chapterId ? updatedPlan.chapterId : undefined,
+          },
+        });
+
+        for (const member of members) {
+          // Skip if the member is a beneficiary of this plan
+          if (updatedPlan.beneficiaryMemberIds?.includes(member.id)) {
+            continue;
+          }
+
+          // Create the obligation record
+          await tx.obligation.create({
+            data: {
+              organisationId: actor.organisationId,
+              memberId: member.id,
+              contributionPlanId: updatedPlan.id,
+              dueDate: effectiveFrom,
+              amountValue: updatedPlan.amountValue,
+              currency: updatedPlan.currency,
+              status: effectiveFrom > new Date() ? 'UPCOMING' : 'DUE',
+            },
+          });
+        }
+      }
+
+      return updatedPlan;
     });
   }
 

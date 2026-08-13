@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/widgets/status_chip.dart';
 import '../auth/auth_controller.dart';
 import 'profile_repository.dart';
+import '../../core/theme/theme_provider.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -188,6 +189,41 @@ class ProfileScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
+                const SizedBox(height: 24),
+                Text('Settings', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.palette_outlined),
+                    title: const Text('Theme Mode'),
+                    subtitle: Text(
+                      ref.watch(themeModeProvider).name.toUpperCase(),
+                    ),
+                    trailing: DropdownButton<ThemeMode>(
+                      value: ref.watch(themeModeProvider),
+                      underline: const SizedBox(),
+                      onChanged: (mode) {
+                        if (mode != null) {
+                          ref.read(themeModeProvider.notifier).state = mode;
+                        }
+                      },
+                      items: const [
+                        DropdownMenuItem(
+                          value: ThemeMode.system,
+                          child: Text('System'),
+                        ),
+                        DropdownMenuItem(
+                          value: ThemeMode.light,
+                          child: Text('Light'),
+                        ),
+                        DropdownMenuItem(
+                          value: ThemeMode.dark,
+                          child: Text('Dark'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 32),
                 OutlinedButton.icon(
                   onPressed: () => _confirmSignOut(context, ref),
