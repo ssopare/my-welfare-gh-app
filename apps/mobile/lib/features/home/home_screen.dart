@@ -2,11 +2,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/models/obligation.dart';
 import '../../core/models/claim.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/money_text.dart';
-import '../../core/widgets/status_chip.dart';
 import '../auth/auth_controller.dart';
 import '../payments/pay_screen.dart';
 import '../claims/claims_screen.dart';
@@ -80,7 +78,7 @@ class HomeScreen extends ConsumerWidget {
                   if (data.profile.status == 'PENDING') {
                     return _PendingApprovalState(
                       organisationName: data.organisation.legalName,
-                      memberName: data.profile.account.name ?? 'Member',
+                      memberName: data.profile.name ?? 'Member',
                       phoneNumber: data.profile.phoneNumber,
                       onRefresh: () => ref.refresh(homeDataProvider.future),
                       onSignOut: () {
@@ -143,18 +141,19 @@ class _HomeContent extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
     final claims = ref.watch(claimsProvider);
 
-    // Calculate Wallet Balance as the sum of paid obligations
-    double walletBalance = data.obligations
+    // Calculate Wallet Balance as the sum of paid obligations. A fresh
+    // member with no payment history genuinely has GHS 0.00 — show that,
+    // not a stand-in number.
+    final double walletBalance = data.obligations
         .where((o) => o.status == 'PAID')
         .fold(0.0, (sum, o) => sum + double.parse(o.amountValue));
-    if (walletBalance == 0.0) {
-      walletBalance = 45.00; // Mock default to match mockup visual GHS 45.00
-    }
 
-    // Calculate Consistency Score
-    double consistencyScore = data.obligations.isEmpty
-        ? 0.96 // Default to match mockup 96%
-        : (data.obligations.where((o) => o.status == 'PAID').length / data.obligations.length);
+    // Consistency Score is only meaningful once there's payment history to
+    // score — an empty obligation list has no consistency to report.
+    final bool hasObligationHistory = data.obligations.isNotEmpty;
+    final double consistencyScore = hasObligationHistory
+        ? (data.obligations.where((o) => o.status == 'PAID').length / data.obligations.length)
+        : 0.0;
 
     // Status mapping for standing card glow
     Color glowColor;
@@ -190,7 +189,7 @@ class _HomeContent extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Hello, Alex 👋',
+                  'Hello, ${data.profile.name ?? 'there'} 👋',
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: isDark ? AppColors.foregroundDark : AppColors.foregroundLight,
@@ -353,30 +352,38 @@ class _HomeContent extends ConsumerWidget {
                               ),
                             ),
                             const SizedBox(height: 6),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '${(consistencyScore * 100).toStringAsFixed(0)}%',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
+                            hasObligationHistory
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '${(consistencyScore * 100).toStringAsFixed(0)}%',
+                                        style: theme.textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          value: consistencyScore,
+                                          strokeWidth: 2.5,
+                                          backgroundColor: isDark
+                                              ? Colors.white.withValues(alpha: 0.1)
+                                              : Colors.black.withValues(alpha: 0.05),
+                                          valueColor: AlwaysStoppedAnimation<Color>(glowColor),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Text(
+                                    'No history yet',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark ? AppColors.mutedForegroundDark : AppColors.mutedForegroundLight,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    value: consistencyScore,
-                                    strokeWidth: 2.5,
-                                    backgroundColor: isDark
-                                        ? Colors.white.withValues(alpha: 0.1)
-                                        : Colors.black.withValues(alpha: 0.05),
-                                    valueColor: AlwaysStoppedAnimation<Color>(glowColor),
-                                  ),
-                                ),
-                              ],
-                            ),
                           ],
                         ),
                       ],
@@ -479,33 +486,23 @@ class _HomeContent extends ConsumerWidget {
                 .where((c) => c.status == 'SUBMITTED' || c.status == 'APPROVED')
                 .toList();
 
-            // Inject mockup claims as fallback so it matches the high-fidelity mockups!
-            final displayClaims = activeClaims.isEmpty
-                ? [
-                    Claim(
-                      id: 'mock-1',
-                      benefitName: 'Child Birth Support',
-                      eventDate: DateTime(2024, 5, 12),
-                      amountValue: '1500.00',
-                      currency: 'GHS',
-                      status: 'APPROVED',
-                      createdAt: DateTime(2024, 5, 12),
+            if (activeClaims.isEmpty) {
+              return _GlassCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    'No active benefit claims — tap File Claim to submit one.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: isDark ? AppColors.mutedForegroundDark : AppColors.mutedForegroundLight,
                     ),
-                    Claim(
-                      id: 'mock-2',
-                      benefitName: 'Bereavement Support',
-                      eventDate: DateTime(2024, 5, 10),
-                      amountValue: '500.00',
-                      currency: 'GHS',
-                      status: 'SUBMITTED',
-                      createdAt: DateTime(2024, 5, 10),
-                    ),
-                  ]
-                : activeClaims;
+                  ),
+                ),
+              );
+            }
 
             return Column(
               children: [
-                for (final claim in displayClaims.take(3))
+                for (final claim in activeClaims.take(3))
                   _GlassCard(
                     margin: const EdgeInsets.only(bottom: 10),
                     child: ListTile(
@@ -618,77 +615,61 @@ class _HomeContent extends ConsumerWidget {
 
     // Merge transactions sorted by date
     final List<_TransactionItem> txList = [];
-    
-    // Inject mockup transactions if both lists are empty
-    if (paidDues.isEmpty && paidClaims.isEmpty) {
-      txList.addAll([
+
+    for (final due in paidDues) {
+      txList.add(
         _TransactionItem(
-          title: 'Monthly Dues - May',
+          title: 'Monthly Dues - ${[
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec'
+          ][due.dueDate.month - 1]}',
           subtitle: 'Deduction',
-          amount: '-10.00',
-          currency: 'GHS',
-          date: DateTime(2024, 5, 15),
+          amount: '-${due.amountValue}',
+          currency: due.currency,
+          date: due.dueDate,
           isCredit: false,
         ),
+      );
+    }
+
+    for (final claim in paidClaims) {
+      txList.add(
         _TransactionItem(
-          title: 'Claim Payment - Child Birth',
+          title: 'Claim Payment - ${claim.benefitName}',
           subtitle: 'Credit',
-          amount: '+1500.00',
-          currency: 'GHS',
-          date: DateTime(2024, 5, 12),
+          amount: '+${claim.amountValue}',
+          currency: claim.currency,
+          date: claim.eventDate,
           isCredit: true,
         ),
-        _TransactionItem(
-          title: 'Welfare Dues - April',
-          subtitle: 'Deduction',
-          amount: '-10.00',
-          currency: 'GHS',
-          date: DateTime(2024, 4, 15),
-          isCredit: false,
-        ),
-      ]);
-    } else {
-      for (final due in paidDues) {
-        txList.add(
-          _TransactionItem(
-            title: 'Monthly Dues - ${[
-              'Jan',
-              'Feb',
-              'Mar',
-              'Apr',
-              'May',
-              'Jun',
-              'Jul',
-              'Aug',
-              'Sep',
-              'Oct',
-              'Nov',
-              'Dec'
-            ][due.dueDate.month - 1]}',
-            subtitle: 'Deduction',
-            amount: '-${due.amountValue}',
-            currency: due.currency,
-            date: due.dueDate,
-            isCredit: false,
-          ),
-        );
-      }
-
-      for (final claim in paidClaims) {
-        txList.add(
-          _TransactionItem(
-            title: 'Claim Payment - ${claim.benefitName}',
-            subtitle: 'Credit',
-            amount: '+${claim.amountValue}',
-            currency: claim.currency,
-            date: claim.eventDate,
-            isCredit: true,
-          ),
-        );
-      }
+      );
     }
 
     txList.sort((a, b) => b.date.compareTo(a.date));
+
+    if (txList.isEmpty) {
+      return _GlassCard(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            'No transactions yet.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: isDark ? AppColors.mutedForegroundDark : AppColors.mutedForegroundLight,
+            ),
+          ),
+        ),
+      );
+    }
 
     return _GlassCard(
       child: Padding(

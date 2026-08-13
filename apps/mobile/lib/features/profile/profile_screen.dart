@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/widgets/status_chip.dart';
 import '../auth/auth_controller.dart';
@@ -225,6 +226,12 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 32),
+                OutlinedButton.icon(
+                  onPressed: () => context.push('/join-additional-organisation'),
+                  icon: const Icon(Icons.group_add_outlined),
+                  label: const Text('Join another welfare group'),
+                ),
+                const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: () => _confirmSignOut(context, ref),
                   icon: const Icon(Icons.logout),

@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import type { Notification, SubscriptionStatus } from "@welfare/shared-types";
+import type { MyOrganisationMembership, Notification, SubscriptionStatus } from "@welfare/shared-types";
 import { AppSidebar } from "./app-sidebar";
 import { AppTopbar } from "./app-topbar";
 import { CommandPalette } from "./command-palette";
@@ -12,6 +12,7 @@ interface AppShellProps {
   subscriptionStatus: SubscriptionStatus;
   role: "ADMIN" | "MEMBER";
   notifications: Notification[];
+  myOrganisations: MyOrganisationMembership[];
   children: ReactNode;
 }
 
@@ -20,13 +21,19 @@ export function AppShell({
   subscriptionStatus,
   role,
   notifications,
+  myOrganisations,
   children,
 }: AppShellProps) {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   return (
     <SidebarProvider>
-      <AppSidebar organisationName={organisationName} subscriptionStatus={subscriptionStatus} role={role} />
+      <AppSidebar
+        organisationName={organisationName}
+        subscriptionStatus={subscriptionStatus}
+        role={role}
+        myOrganisations={myOrganisations}
+      />
       <SidebarInset className="shell-ambient">
         <AppTopbar
           role={role}

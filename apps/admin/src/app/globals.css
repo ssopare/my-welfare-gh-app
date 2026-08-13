@@ -373,3 +373,54 @@
     margin: 1.5cm;
   }
 }
+
+/* ==========================================
+   Premium Glassmorphic Sidebar Enhancements
+   ========================================== */
+
+/* Translucent dark container background with backdrop blur */
+[data-sidebar="sidebar"] {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 17, 32, 0.82) 0%,
+    rgba(9, 10, 18, 0.94) 100%
+  ) !important;
+  backdrop-filter: blur(16px);
+  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Subtle glowing top branding bar divider */
+[data-sidebar="sidebar"] [data-slot="sidebar-header"] {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Styled sidebar navigation buttons */
+[data-sidebar="sidebar"] [data-slot="sidebar-menu"] button,
+[data-sidebar="sidebar"] [data-slot="sidebar-menu"] a {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 8px !important;
+  margin: 2px 0;
+}
+
+/* Hover effects */
+[data-sidebar="sidebar"] [data-slot="sidebar-menu"] button:hover,
+[data-sidebar="sidebar"] [data-slot="sidebar-menu"] a:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #ffffff !important;
+  transform: translateX(4px);
+}
+
+/* Active links with elegant vertical glow and brand highlight */
+[data-sidebar="sidebar"] [data-active="true"] {
+  background: linear-gradient(
+    90deg,
+    rgba(91, 72, 250, 0.24) 0%,
+    rgba(91, 72, 250, 0.05) 100%
+  ) !important;
+  border-left: 3px solid #7c5cff !important;
+  border-radius: 0 8px 8px 0 !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  box-shadow: inset 2px 0 8px rgba(91, 72, 250, 0.15);
+}
+

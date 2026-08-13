@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/auth_controller.dart';
 import '../../features/auth/complete_profile_screen.dart';
 import '../../features/auth/create_organisation_screen.dart';
+import '../../features/auth/join_additional_organisation_screen.dart';
 import '../../features/auth/join_screen.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/auth/onboarding_screen.dart';
@@ -54,6 +55,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/claims', builder: (context, state) => const ClaimsScreen()),
           GoRoute(path: '/notifications', builder: (context, state) => const NotificationsScreen()),
           GoRoute(path: '/profile', builder: (context, state) => const ProfileScreen()),
+          GoRoute(
+            path: '/join-additional-organisation',
+            builder: (context, state) => const JoinAdditionalOrganisationScreen(),
+          ),
         ],
       ),
     ],

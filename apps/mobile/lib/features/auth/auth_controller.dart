@@ -94,6 +94,15 @@ class AuthController extends ChangeNotifier {
         name: name,
       ));
 
+  // Side-effect free — does not go through _attempt (no identity change,
+  // no lastError semantics). Callers handle their own failure UI since a
+  // failed lookup here just means "assume new account" rather than a
+  // fatal auth error.
+  Future<bool> checkPhoneExists(String phoneNumber) => _repository.checkPhoneExists(phoneNumber);
+
+  Future<bool> joinAdditionalOrganisation({required String joinCode}) =>
+      _attempt(() => _repository.joinAdditionalOrganisation(joinCode: joinCode));
+
   Future<bool> registerOrganisation({
     required String legalName,
     required String organisationType,

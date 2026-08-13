@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { NotificationCoreModule } from '../notifications/notification-core.module';
 import { RbacModule } from '../rbac/rbac.module';
 import { SubscriptionCoreModule } from '../subscriptions/subscription-core.module';
 import { AuthController } from './auth.controller';
@@ -20,6 +21,7 @@ if (!jwtSecret) {
     }),
     RbacModule,
     SubscriptionCoreModule,
+    NotificationCoreModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard],

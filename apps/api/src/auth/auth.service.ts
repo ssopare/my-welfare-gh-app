@@ -8,13 +8,17 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { Prisma } from '../../generated/prisma/client';
+import { NotificationService } from '../notifications/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
 import { SubscriptionService } from '../subscriptions/subscription.service';
+import { CheckPhoneDto } from './dto/check-phone.dto';
 import { CreateAdditionalOrganisationDto } from './dto/create-additional-organisation.dto';
+import { JoinAdditionalOrganisationDto } from './dto/join-additional-organisation.dto';
 import { JoinOrganisationDto } from './dto/join-organisation.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterOrganisationDto } from './dto/register-organisation.dto';
+import { SwitchOrganisationDto } from './dto/switch-organisation.dto';
 
 export interface AuthTokenPayload {
   sub: string; // accountId
@@ -58,6 +62,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly rbac: RbacService,
     private readonly subscriptions: SubscriptionService,
+    private readonly notifications: NotificationService,
   ) {}
 
   async registerOrganisation(dto: RegisterOrganisationDto) {
@@ -215,10 +220,13 @@ export class AuthService {
   // an admin re-inviting someone who already has the id from elsewhere)
   // can identify the organisation to join; exactly one of them is
   // required, enforced here rather than at the DTO level since it's a
-  // cross-field business rule, not a per-field shape check.
-  private async resolveOrganisationId(
-    dto: JoinOrganisationDto,
-  ): Promise<string> {
+  // cross-field business rule, not a per-field shape check. Typed to the
+  // shared shape (not JoinOrganisationDto specifically) so the
+  // authenticated join-additional-organisation path can reuse this too.
+  private async resolveOrganisationId(dto: {
+    organisationId?: string;
+    joinCode?: string;
+  }): Promise<string> {
     if (dto.organisationId) {
       return dto.organisationId;
     }
@@ -264,8 +272,45 @@ export class AuthService {
         data: { phoneNumber: dto.phoneNumber, passwordHash, name: dto.name },
       });
     }
-    const accountId = account.id;
 
+    return this.joinOrganisationForAccount(account.id, organisationId);
+  }
+
+  // Whether dto.phoneNumber has an Account yet — nothing else is leaked
+  // (no name, no org membership). Lets the join screen decide up front
+  // whether to ask for a name (new account) or just a password ("welcome
+  // back"), instead of always asking for both and silently discarding the
+  // name when it turns out the account already existed.
+  async checkPhoneExists(dto: CheckPhoneDto): Promise<{ exists: boolean }> {
+    const account = await this.prisma.account.findUnique({
+      where: { phoneNumber: dto.phoneNumber },
+      select: { id: true },
+    });
+    return { exists: !!account };
+  }
+
+  // Authenticated counterpart to joinOrganisation, for a member who's
+  // already logged in and just wants to join a second organisation — the
+  // caller's JWT already proves who they are, so this needs nothing but a
+  // join code, the same way createAdditionalOrganisation reuses actor.sub
+  // to *found* a second org instead of asking to re-register.
+  async joinAdditionalOrganisation(
+    actor: AuthTokenPayload,
+    dto: JoinAdditionalOrganisationDto,
+  ) {
+    const organisationId = await this.resolveOrganisationId(dto);
+    return this.joinOrganisationForAccount(actor.sub, organisationId);
+  }
+
+  // Shared core for both join paths above — the only place a Member ever
+  // gets created for FR-MEM-09's "join an existing org" flow (as opposed
+  // to founding one), so the admin notification below can't accidentally
+  // diverge between the phone/password entry point and the
+  // already-logged-in one.
+  private async joinOrganisationForAccount(
+    accountId: string,
+    organisationId: string,
+  ) {
     // Cross-tenant read (which orgs does this account already belong to?)
     // — same bootstrapping problem login() solves, same fix: app.account_id
     // rather than any tenant context.
@@ -302,6 +347,11 @@ export class AuthService {
         });
       }
     }
+
+    const joiningAccount = await this.prisma.account.findUnique({
+      where: { id: accountId },
+      select: { phoneNumber: true },
+    });
 
     const member = await this.prisma.withTenant(organisationId, async (tx) => {
       const organisation = await tx.organisation.findUnique({
@@ -358,6 +408,32 @@ export class AuthService {
         );
       }
 
+      // New joiners land in PENDING (Member.status default) and need an
+      // admin to review them (MembershipService.changeStatus) — until
+      // now, nothing ever told an admin one was waiting; the only signal
+      // was a "pending approval" line under a dashboard KPI, easy to miss
+      // indefinitely. Same admin-targeting requireAdmin itself checks
+      // (RbacService.hasWildcardAdminPermission), same fan-out pattern
+      // already used for subscription-lapsed notices
+      // (NotificationSchedulerService).
+      if (created.status === 'PENDING') {
+        const adminIds = await this.rbac.listMembersWithPermissionInTx(
+          tx,
+          '*',
+          '*',
+        );
+        for (const adminId of adminIds) {
+          await this.notifications.notifyInTx(
+            tx,
+            organisationId,
+            adminId,
+            'MEMBER_JOIN_PENDING',
+            `${joiningAccount?.phoneNumber ?? 'A new member'} has requested to join and is awaiting approval.`,
+            { sourceType: 'member', sourceId: created.id },
+          );
+        }
+      }
+
       return created;
     });
 
@@ -392,9 +468,19 @@ export class AuthService {
     let member = memberships[0];
     if (memberships.length > 1) {
       if (!dto.organisationId) {
-        throw new BadRequestException(
-          'This account belongs to multiple organisations; specify organisationId',
-        );
+        // The password already checked out above, so revealing which
+        // organisations this account belongs to here is safe — same
+        // "authenticate before disclosing membership" ordering as
+        // everywhere else. Lets the frontend render real organisation
+        // names instead of demanding a memorized raw id (see
+        // hydrateMembershipOrganisations).
+        const organisations =
+          await this.hydrateMembershipOrganisations(memberships);
+        throw new BadRequestException({
+          message:
+            'This account belongs to multiple organisations; specify organisationId',
+          organisations,
+        });
       }
       const match = memberships.find(
         (m) => m.organisationId === dto.organisationId,
@@ -412,6 +498,92 @@ export class AuthService {
       memberId: member.id,
       organisationId: member.organisationId,
       role: member.role,
+    });
+  }
+
+  // Turns a raw membership list into the browseable {organisationId,
+  // legalName, role, status, isCurrent} shape shared by listMyOrganisations
+  // and login()'s multi-org disambiguation — one withTenant() per
+  // membership to read that org's own legalName, same per-org loop
+  // pattern already used for dependant-prefill in
+  // joinOrganisationForAccount, since there's no cross-tenant "read many
+  // organisations at once" RLS policy and these lists are always short
+  // (one account's own memberships, not a general org directory).
+  // currentOrganisationId is omitted pre-login (login() has no "current"
+  // org yet to mark) — every entry's isCurrent is then simply false.
+  private async hydrateMembershipOrganisations(
+    memberships: { organisationId: string; role: 'ADMIN' | 'MEMBER'; status: string }[],
+    currentOrganisationId?: string,
+  ) {
+    const organisations: {
+      organisationId: string;
+      legalName: string;
+      role: 'ADMIN' | 'MEMBER';
+      status: string;
+      isCurrent: boolean;
+    }[] = [];
+    for (const membership of memberships) {
+      const organisation = await this.prisma.withTenant(
+        membership.organisationId,
+        (tx) =>
+          tx.organisation.findUnique({
+            where: { id: membership.organisationId },
+            select: { legalName: true },
+          }),
+      );
+      if (!organisation) continue;
+      organisations.push({
+        organisationId: membership.organisationId,
+        legalName: organisation.legalName,
+        role: membership.role,
+        status: membership.status,
+        isCurrent: membership.organisationId === currentOrganisationId,
+      });
+    }
+    return organisations;
+  }
+
+  // Every organisation the caller's account belongs to, for a "switch
+  // organisation" picker — the counterpart to login()'s multi-org
+  // disambiguation, but browseable instead of requiring a memorized raw
+  // id. Same cross-tenant discovery call login() and
+  // joinOrganisationForAccount() already use.
+  async listMyOrganisations(actor: AuthTokenPayload) {
+    const memberships = await this.prisma.withAccount(actor.sub, (tx) =>
+      tx.member.findMany({ where: { accountId: actor.sub } }),
+    );
+    return this.hydrateMembershipOrganisations(
+      memberships,
+      actor.organisationId,
+    );
+  }
+
+  // Reissues a token scoped to a *different* organisation the caller's
+  // account already belongs to — no password, the JWT already proves who
+  // they are, same reasoning as joinAdditionalOrganisation. This is what
+  // actually lets someone "switch groups" instead of logging out and back
+  // in with that org's raw id (previously the only way back — see the
+  // comment on the admin console's createAdditionalOrganisationAction).
+  async switchOrganisation(
+    actor: AuthTokenPayload,
+    dto: SwitchOrganisationDto,
+  ) {
+    const membership = await this.prisma.withAccount(actor.sub, (tx) =>
+      tx.member.findFirst({
+        where: { accountId: actor.sub, organisationId: dto.organisationId },
+      }),
+    );
+    if (!membership) {
+      throw new UnauthorizedException(
+        'Not a member of the specified organisation',
+      );
+    }
+
+    return this.issueToken({
+      accountId: actor.sub,
+      memberId: membership.id,
+      organisationId: membership.organisationId,
+      role: membership.role,
     });
   }
 

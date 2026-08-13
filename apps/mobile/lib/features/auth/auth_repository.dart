@@ -47,6 +47,28 @@ class AuthRepository {
     return me();
   }
 
+  // Public, side-effect free — lets the join screen decide whether to ask
+  // for a name (new account) or just show a "welcome back" password
+  // prompt (existing account) before the user commits to anything.
+  Future<bool> checkPhoneExists(String phoneNumber) async {
+    final res = await _api.dio.post('/auth/check-phone', data: {
+      'phoneNumber': phoneNumber,
+    });
+    return res.data['exists'] as bool;
+  }
+
+  // Authenticated counterpart to joinOrganisation above — for a member
+  // who's already logged in and just wants to join a second organisation.
+  // Needs only a join code: the JWT already proves who they are, so no
+  // phone/password/name re-entry.
+  Future<AuthIdentity> joinAdditionalOrganisation({required String joinCode}) async {
+    final res = await _api.dio.post('/auth/organisations/join', data: {
+      'joinCode': joinCode,
+    });
+    await _tokenStorage.save(res.data['accessToken'] as String);
+    return me();
+  }
+
   // The mobile counterpart to the admin console's "create organisation"
   // flow — founds a brand-new organisation and becomes its admin. Not
   // technically web-only (the backend endpoint has never cared which app

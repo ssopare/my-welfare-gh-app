@@ -15,7 +15,8 @@ export interface CreateOrganisationFormState {
 // one. Since every session here is single-org, the new token this returns
 // immediately replaces the current one, landing the caller in the new
 // organisation's context (same as register/login) — switching back to a
-// previous org means logging in again against that org.
+// previous org is now just the sidebar organisation switcher
+// (switch-actions.ts), not a re-login.
 export async function createAdditionalOrganisationAction(
   _prevState: CreateOrganisationFormState,
   formData: FormData,

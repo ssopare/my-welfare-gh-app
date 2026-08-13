@@ -912,6 +912,7 @@ enum NotificationType {
   CLAIM_STAGE_ENTERED
   CLAIM_STATUS_CHANGED
   SUBSCRIPTION_LAPSED
+  MEMBER_JOIN_PENDING
 }
 
 // sourceType/sourceId are what makes NotificationService.notifyInTx

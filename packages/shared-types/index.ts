@@ -22,6 +22,16 @@ export interface AuthIdentity {
   role: "ADMIN" | "MEMBER";
 }
 
+// One entry per organisation the caller's account belongs to, as returned
+// by GET /auth/organisations — feeds a "switch organisation" picker.
+export interface MyOrganisationMembership {
+  organisationId: string;
+  legalName: string;
+  role: "ADMIN" | "MEMBER";
+  status: string;
+  isCurrent: boolean;
+}
+
 export interface LoginInput {
   phoneNumber: string;
   password: string;

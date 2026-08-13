@@ -10,10 +10,13 @@ import {
 import { AuthService } from './auth.service';
 import type { AuthTokenPayload } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
+import { CheckPhoneDto } from './dto/check-phone.dto';
 import { CreateAdditionalOrganisationDto } from './dto/create-additional-organisation.dto';
+import { JoinAdditionalOrganisationDto } from './dto/join-additional-organisation.dto';
 import { JoinOrganisationDto } from './dto/join-organisation.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterOrganisationDto } from './dto/register-organisation.dto';
+import { SwitchOrganisationDto } from './dto/switch-organisation.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
@@ -41,6 +44,47 @@ export class AuthController {
   @Post('join-organisation')
   joinOrganisation(@Body() dto: JoinOrganisationDto) {
     return this.authService.joinOrganisation(dto);
+  }
+
+  // Whether a phone number already has an Account — public, side-effect
+  // free. The mobile join screen calls this before deciding whether to
+  // ask for a name (new account) or just a password ("welcome back").
+  @Post('check-phone')
+  @HttpCode(HttpStatus.OK)
+  checkPhoneExists(@Body() dto: CheckPhoneDto) {
+    return this.authService.checkPhoneExists(dto);
+  }
+
+  // Authenticated counterpart to join-organisation, for a member who's
+  // already logged in and just wants to join a second organisation — see
+  // AuthService.joinAdditionalOrganisation.
+  @Post('organisations/join')
+  @UseGuards(JwtAuthGuard)
+  joinAdditionalOrganisation(
+    @CurrentUser() user: AuthTokenPayload,
+    @Body() dto: JoinAdditionalOrganisationDto,
+  ) {
+    return this.authService.joinAdditionalOrganisation(user, dto);
+  }
+
+  // Every organisation the caller already belongs to — feeds a "switch
+  // organisation" picker so switching doesn't require memorizing a raw id.
+  @Get('organisations')
+  @UseGuards(JwtAuthGuard)
+  listMyOrganisations(@CurrentUser() user: AuthTokenPayload) {
+    return this.authService.listMyOrganisations(user);
+  }
+
+  // Reissues a token scoped to a different organisation the caller
+  // already belongs to — no password needed, the JWT already proves who
+  // they are. See AuthService.switchOrganisation.
+  @Post('organisations/switch')
+  @UseGuards(JwtAuthGuard)
+  switchOrganisation(
+    @CurrentUser() user: AuthTokenPayload,
+    @Body() dto: SwitchOrganisationDto,
+  ) {
+    return this.authService.switchOrganisation(user, dto);
   }
 
   @Post('login')

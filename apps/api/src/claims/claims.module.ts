@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { LedgerModule } from '../ledger/ledger.module';
-import { NotificationsModule } from '../notifications/notifications.module';
+import { NotificationCoreModule } from '../notifications/notification-core.module';
 import { RbacModule } from '../rbac/rbac.module';
 import { RuleEngineModule } from '../rule-engine/rule-engine.module';
 import { ClaimController } from './claim.controller';
@@ -13,7 +13,7 @@ import { ClaimService } from './claim.service';
     RuleEngineModule,
     LedgerModule,
     RbacModule,
-    NotificationsModule,
+    NotificationCoreModule,
   ],
   controllers: [ClaimController],
   providers: [ClaimService],

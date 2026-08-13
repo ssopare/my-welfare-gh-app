@@ -85,9 +85,45 @@ class AppTheme {
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-        indicatorColor: colorScheme.primary.withValues(alpha: 0.14),
+        backgroundColor: isDark
+            ? AppColors.surfaceDark.withValues(alpha: 0.7)
+            : AppColors.surfaceLight.withValues(alpha: 0.8),
+        indicatorColor: isDark
+            ? AppColors.primaryDark.withValues(alpha: 0.24)
+            : AppColors.primaryLight.withValues(alpha: 0.16),
         elevation: 0,
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return IconThemeData(
+              color: isDark ? Colors.white : AppColors.primaryLight,
+              size: 24,
+            );
+          }
+          return IconThemeData(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.4)
+                : Colors.black.withValues(alpha: 0.4),
+            size: 24,
+          );
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final fontStyle = GoogleFonts.plusJakartaSans(
+            fontSize: 11,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.bold
+                : FontWeight.w500,
+          );
+          if (states.contains(WidgetState.selected)) {
+            return fontStyle.copyWith(
+              color: isDark ? Colors.white : AppColors.primaryLight,
+            );
+          }
+          return fontStyle.copyWith(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.4)
+                : Colors.black.withValues(alpha: 0.4),
+          );
+        }),
       ),
     );
   }

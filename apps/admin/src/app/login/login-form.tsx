@@ -6,9 +6,16 @@ import { Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { loginAction, type LoginFormState } from "./actions";
 
-const INITIAL_STATE: LoginFormState = { error: null, needsOrganisationId: false };
+const INITIAL_STATE: LoginFormState = { error: null, needsOrganisationId: false, organisations: [] };
 
 export function LoginForm() {
   const [state, formAction, isPending] = useActionState(loginAction, INITIAL_STATE);
@@ -40,10 +47,21 @@ export function LoginForm() {
 
       {state.needsOrganisationId && (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="organisationId">Organisation ID</Label>
-          <Input id="organisationId" name="organisationId" placeholder="Which organisation?" required />
+          <Label htmlFor="organisationId">Organisation</Label>
+          <Select name="organisationId" required>
+            <SelectTrigger id="organisationId" className="w-full">
+              <SelectValue placeholder="Which organisation?" />
+            </SelectTrigger>
+            <SelectContent>
+              {state.organisations.map((org) => (
+                <SelectItem key={org.organisationId} value={org.organisationId}>
+                  {org.legalName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <p className="text-xs text-muted-foreground">
-            This phone number belongs to more than one organisation — enter the one you want to manage.
+            This phone number belongs to more than one organisation — pick the one you want to manage.
           </p>
         </div>
       )}

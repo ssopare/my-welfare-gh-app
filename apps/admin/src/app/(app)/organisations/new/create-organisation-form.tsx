@@ -52,8 +52,8 @@ export function CreateOrganisationForm() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        After creating it, you&apos;ll be switched into this new organisation&apos;s context. Sign in again
-        and pick the other organisation to go back.
+        After creating it, you&apos;ll be switched into this new organisation&apos;s context. Use the
+        organisation switcher in the sidebar to move between organisations any time.
       </p>
 
       <Button type="submit" disabled={isPending} className="mt-1 w-fit">

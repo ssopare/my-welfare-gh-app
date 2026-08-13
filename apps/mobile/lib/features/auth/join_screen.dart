@@ -24,16 +24,51 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _joinCodeController = TextEditingController();
+  final _phoneFocusNode = FocusNode();
   bool _isSubmitting = false;
   bool _obscurePassword = true;
+  // null = not checked yet, true/false = result of the last check-phone
+  // call. Drives whether the Name field shows — see WhatsApp-style
+  // reasoning in the join-flow plan: a returning phone number shouldn't
+  // have to supply a name again.
+  bool? _accountExists;
+  bool _isCheckingPhone = false;
+  String? _lastCheckedPhone;
+
+  @override
+  void initState() {
+    super.initState();
+    _phoneFocusNode.addListener(_onPhoneFocusChange);
+  }
 
   @override
   void dispose() {
+    _phoneFocusNode.removeListener(_onPhoneFocusChange);
+    _phoneFocusNode.dispose();
     _nameController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
     _joinCodeController.dispose();
     super.dispose();
+  }
+
+  void _onPhoneFocusChange() {
+    if (_phoneFocusNode.hasFocus) return;
+    _checkPhone();
+  }
+
+  Future<void> _checkPhone() async {
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty || phone == _lastCheckedPhone) return;
+    setState(() => _isCheckingPhone = true);
+    final auth = ref.read(authControllerProvider);
+    final exists = await auth.checkPhoneExists(phone);
+    if (!mounted) return;
+    setState(() {
+      _lastCheckedPhone = phone;
+      _accountExists = exists;
+      _isCheckingPhone = false;
+    });
   }
 
   Future<void> _submit() async {
@@ -43,6 +78,8 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
       phoneNumber: _phoneController.text.trim(),
       password: _passwordController.text,
       joinCode: _joinCodeController.text.trim(),
+      // Ignored server-side when the account already exists, but harmless
+      // to send even when the field is hidden.
       name: _nameController.text.trim(),
     );
     if (!mounted) return;
@@ -87,14 +124,18 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Join your organisation',
+              Text(_accountExists == true ? 'Welcome back' : 'Join your organisation',
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: isDark ? Colors.white : const Color(0xFF1C1A22),
                   )),
               const SizedBox(height: 4),
-              Text("Ask your welfare association's admin for the join code.",
-                  style: theme.textTheme.bodyMedium?.copyWith(color: muted)),
+              Text(
+                _accountExists == true
+                    ? 'This number already has an account — enter your password to join with it.'
+                    : "Ask your welfare association's admin for the join code.",
+                style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+              ),
               const SizedBox(height: 24),
               AuthInputCard(
                 label: 'JOIN CODE',
@@ -107,25 +148,35 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
               ),
               const SizedBox(height: 12),
               AuthInputCard(
-                label: 'YOUR NAME',
-                isDark: isDark,
-                child: TextField(
-                  controller: _nameController,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(hintText: 'e.g. Kofi Mensah', border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
-                ),
-              ),
-              const SizedBox(height: 12),
-              AuthInputCard(
                 label: 'PHONE NUMBER',
                 isDark: isDark,
-                child: TextField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(hintText: '+233 20 000 0000', border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
-                ),
+                child: Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _phoneController,
+                      focusNode: _phoneFocusNode,
+                      keyboardType: TextInputType.phone,
+                      onSubmitted: (_) => _checkPhone(),
+                      decoration: const InputDecoration(hintText: '+233 20 000 0000', border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
+                    ),
+                  ),
+                  if (_isCheckingPhone)
+                    const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                ]),
               ),
               const SizedBox(height: 12),
+              if (_accountExists != true) ...[
+                AuthInputCard(
+                  label: 'YOUR NAME',
+                  isDark: isDark,
+                  child: TextField(
+                    controller: _nameController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(hintText: 'e.g. Kofi Mensah', border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               AuthInputCard(
                 label: 'PASSWORD',
                 isDark: isDark,
@@ -156,7 +207,11 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
                 ),
               ],
               const SizedBox(height: 20),
-              AuthPrimaryButton(label: 'Join organisation', isLoading: _isSubmitting, onPressed: _submit),
+              AuthPrimaryButton(
+                label: _accountExists == true ? 'Join with this account' : 'Join organisation',
+                isLoading: _isSubmitting,
+                onPressed: _submit,
+              ),
               const SizedBox(height: 24),
             ],
           ),
