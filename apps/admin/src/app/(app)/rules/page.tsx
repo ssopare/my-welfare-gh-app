@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { apiFetchOrNull } from "@/lib/api-client";
 import { requireSession } from "@/lib/session";
 import { RULE_STATUS_META } from "@/lib/status-meta";
@@ -46,12 +47,12 @@ export default async function RulesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Rules &amp; Benefits</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Contribution plans and benefit rules — every change creates a new, timestamped version.
-        </p>
-      </div>
+      <DashboardHeader
+        title="Rules & Benefits"
+        subtitle="Contribution plans and benefit rules — every change creates a new, timestamped version."
+        icon={Scale}
+        theme="indigo"
+      />
 
       {!plans && !rules ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-16 text-center">

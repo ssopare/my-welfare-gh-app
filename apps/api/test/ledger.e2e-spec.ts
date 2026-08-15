@@ -1282,4 +1282,164 @@ describe('Ledger (e2e)', () => {
       .send({ name: 'Administrative Expenses', type: 'EXPENSE' })
       .expect(400);
   });
+
+  it('allocates payment correctly for a voluntary contribution plan', async () => {
+    const admin = await registerOrganisation('Ledger Voluntary Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    
+    // Set status to ACTIVE
+    await request(app.getHttpServer())
+      .patch(`/members/${member.identity.memberId}/status`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ status: 'ACTIVE' })
+      .expect(200);
+
+    const fund = await createFund(admin.accessToken);
+
+    // Create draft voluntary plan
+    const planRes = await request(app.getHttpServer())
+      .post('/contribution-plans')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Voluntary Building Fund',
+        cadence: 'monthly',
+        amountValue: '0.00',
+        currency: 'GHS',
+        computationType: 'voluntary',
+        defaultFundId: fund.id,
+      })
+      .expect(201);
+    const plan = planRes.body as RuleResponse;
+
+    // Activate it
+    await request(app.getHttpServer())
+      .post(`/contribution-plans/${plan.id}/activate`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ effectiveFrom: new Date().toISOString() })
+      .expect(201);
+
+    // Generate obligation for member
+    const obligation = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      new Date().toISOString(),
+    );
+    expect(obligation.amountValue).toBe('0');
+
+    // Record payment of 150 GHS
+    const payRes = await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '150.00',
+        currency: 'GHS',
+      })
+      .expect(201);
+    const pay = payRes.body as PaymentResponse;
+
+    // Verify allocations
+    expect(pay.allocations).toHaveLength(1);
+    expect(pay.allocations[0].obligationId).toBe(obligation.id);
+    expect(pay.allocations[0].amount).toBe('150');
+
+    // Fetch the updated obligation
+    const openRes = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}/obligations`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const obUpdate = (openRes.body as ObligationResponse[]).find((o) => o.id === obligation.id)!;
+    expect(obUpdate.amountValue).toBe('150');
+    expect(obUpdate.amountPaid).toBe('150');
+    expect(obUpdate.status).toBe('PAID');
+
+    // Fetch the member to verify creditBalance
+    const meRes = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    expect(meRes.body.creditBalance).toBe('0');
+  });
+
+  it('allocates payment correctly for a minimum contribution plan', async () => {
+    const admin = await registerOrganisation('Ledger Minimum Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    
+    // Set status to ACTIVE
+    await request(app.getHttpServer())
+      .patch(`/members/${member.identity.memberId}/status`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ status: 'ACTIVE' })
+      .expect(200);
+
+    const fund = await createFund(admin.accessToken);
+
+    // Create draft minimum plan (e.g. minimum 20.00)
+    const planRes = await request(app.getHttpServer())
+      .post('/contribution-plans')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        name: 'Minimum Maintenance Dues',
+        cadence: 'monthly',
+        amountValue: '20.00',
+        currency: 'GHS',
+        computationType: 'minimum',
+        defaultFundId: fund.id,
+      })
+      .expect(201);
+    const plan = planRes.body as RuleResponse;
+
+    // Activate it
+    await request(app.getHttpServer())
+      .post(`/contribution-plans/${plan.id}/activate`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ effectiveFrom: new Date().toISOString() })
+      .expect(201);
+
+    // Generate obligation for member
+    const obligation = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      new Date().toISOString(),
+    );
+    expect(obligation.amountValue).toBe('20');
+
+    // Record payment of 50 GHS
+    const payRes = await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '50.00',
+        currency: 'GHS',
+      })
+      .expect(201);
+    const pay = payRes.body as PaymentResponse;
+
+    // Verify allocations (entire 50 is allocated)
+    expect(pay.allocations).toHaveLength(1);
+    expect(pay.allocations[0].obligationId).toBe(obligation.id);
+    expect(pay.allocations[0].amount).toBe('50');
+
+    // Fetch the updated obligation
+    const openRes = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}/obligations`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const obUpdate = (openRes.body as ObligationResponse[]).find((o) => o.id === obligation.id)!;
+    expect(obUpdate.amountValue).toBe('50');
+    expect(obUpdate.amountPaid).toBe('50');
+    expect(obUpdate.status).toBe('PAID');
+
+    // Fetch the member to verify creditBalance (entire 50 absorbed, credit remains 0)
+    const meRes = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    expect(meRes.body.creditBalance).toBe('0');
+  });
 });

@@ -14,6 +14,7 @@ import { apiFetchOrNull } from "@/lib/api-client";
 import { requireSession } from "@/lib/session";
 import type { Role } from "@welfare/shared-types";
 import { NewRoleDialog } from "./new-role-dialog";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 
 export const metadata: Metadata = {
   title: "Roles & Access — Welfare Platform",
@@ -25,15 +26,13 @@ export default async function RolesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Roles &amp; Access</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Every permission check is live against these — revoking access takes effect immediately.
-          </p>
-        </div>
-        <NewRoleDialog />
-      </div>
+      <DashboardHeader
+        title="Roles & Access"
+        subtitle="Every permission check is live against these — revoking access takes effect immediately."
+        icon={ShieldCheck}
+        theme="indigo"
+        rightAction={<NewRoleDialog />}
+      />
 
       {!roles ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-16 text-center">
@@ -41,7 +40,7 @@ export default async function RolesPage() {
           <p className="text-sm text-muted-foreground">You don&apos;t have access to role management.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border/60 shadow-md">
+        <div className="overflow-hidden rounded-xl border border-glass-border bg-glass-card/35 backdrop-blur-md shadow-lg transition-all duration-300 hover:shadow-xl dark:bg-glass-card/15">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">

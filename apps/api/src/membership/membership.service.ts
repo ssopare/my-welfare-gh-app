@@ -35,7 +35,7 @@ export class MembershipService {
         where: status ? { status: status as never } : undefined,
         orderBy: { createdAt: 'desc' },
         include: {
-          account: { select: { phoneNumber: true, name: true } },
+          account: { select: { phoneNumber: true, name: true, avatarUrl: true } },
           chapter: true,
         },
       }),
@@ -50,7 +50,7 @@ export class MembershipService {
           dependants: true,
           statusChanges: { orderBy: { changedAt: 'desc' } },
           chapter: true,
-          account: { select: { phoneNumber: true, name: true } },
+          account: { select: { phoneNumber: true, name: true, avatarUrl: true } },
         },
       });
       if (!member) {
@@ -74,7 +74,7 @@ export class MembershipService {
           dependants: true,
           statusChanges: { orderBy: { changedAt: 'desc' } },
           chapter: true,
-          account: { select: { phoneNumber: true, name: true } },
+          account: { select: { phoneNumber: true, name: true, avatarUrl: true } },
         },
       });
       if (!member) {
@@ -92,7 +92,10 @@ export class MembershipService {
   async updateOwnProfile(actor: AuthTokenPayload, dto: UpdateOwnProfileDto) {
     return this.prisma.account.update({
       where: { id: actor.sub },
-      data: { name: dto.name },
+      data: {
+        name: dto.name,
+        avatarUrl: dto.avatarUrl !== undefined ? dto.avatarUrl : undefined,
+      },
     });
   }
 

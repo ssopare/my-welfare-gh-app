@@ -8,6 +8,12 @@ import 'auth_controller.dart';
 /// counterpart to the admin console's "create organisation" flow. See
 /// AuthRepository.registerOrganisation for why this isn't web-only
 /// anymore.
+///
+/// Same "don't re-collect what we already know" phone check as JoinScreen:
+/// a phone number that already has an account skips the Name field and
+/// founds the new organisation under that existing account (password
+/// verified) instead of trying to create a second identity — see
+/// AuthService.registerOrganisation's existing/new account branching.
 class CreateOrganisationScreen extends ConsumerStatefulWidget {
   const CreateOrganisationScreen({super.key});
 
@@ -20,16 +26,49 @@ class _CreateOrganisationScreenState extends ConsumerState<CreateOrganisationScr
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _phoneFocusNode = FocusNode();
   String _organisationType = 'voluntary';
   bool _isSubmitting = false;
+  // null = not checked yet, true/false = result of the last check-phone
+  // call. Drives whether the Name field shows, same as JoinScreen.
+  bool? _accountExists;
+  bool _isCheckingPhone = false;
+  String? _lastCheckedPhone;
+
+  @override
+  void initState() {
+    super.initState();
+    _phoneFocusNode.addListener(_onPhoneFocusChange);
+  }
 
   @override
   void dispose() {
+    _phoneFocusNode.removeListener(_onPhoneFocusChange);
+    _phoneFocusNode.dispose();
     _legalNameController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  void _onPhoneFocusChange() {
+    if (_phoneFocusNode.hasFocus) return;
+    _checkPhone();
+  }
+
+  Future<void> _checkPhone() async {
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty || phone == _lastCheckedPhone) return;
+    setState(() => _isCheckingPhone = true);
+    final auth = ref.read(authControllerProvider);
+    final exists = await auth.checkPhoneExists(phone);
+    if (!mounted) return;
+    setState(() {
+      _lastCheckedPhone = phone;
+      _accountExists = exists;
+      _isCheckingPhone = false;
+    });
   }
 
   Future<void> _submit() async {
@@ -40,6 +79,8 @@ class _CreateOrganisationScreenState extends ConsumerState<CreateOrganisationScr
       organisationType: _organisationType,
       phoneNumber: _phoneController.text.trim(),
       password: _passwordController.text,
+      // Ignored server-side when the account already exists, but harmless
+      // to send even when the field is hidden.
       name: _nameController.text.trim(),
     );
     if (!mounted) return;
@@ -64,7 +105,9 @@ class _CreateOrganisationScreenState extends ConsumerState<CreateOrganisationScr
                 Text('Create your welfare group', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Text(
-                  "You'll be the founding administrator.",
+                  _accountExists == true
+                      ? "This number already has an account — enter its password to found this group with it."
+                      : "You'll be the founding administrator.",
                   style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 28),
@@ -85,21 +128,37 @@ class _CreateOrganisationScreenState extends ConsumerState<CreateOrganisationScr
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  controller: _nameController,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Your name', hintText: 'e.g. Kofi Mensah'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
                   controller: _phoneController,
+                  focusNode: _phoneFocusNode,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Phone number', hintText: '+233 20 000 0000'),
+                  onSubmitted: (_) => _checkPhone(),
+                  decoration: InputDecoration(
+                    labelText: 'Phone number',
+                    hintText: '+233 20 000 0000',
+                    suffixIcon: _isCheckingPhone
+                        ? const Padding(
+                            padding: EdgeInsets.all(14),
+                            child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                          )
+                        : null,
+                  ),
                 ),
+                if (_accountExists != true) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _nameController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: 'Your name', hintText: 'e.g. Kofi Mensah'),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 TextField(
                   controller: _passwordController,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Password', helperText: 'At least 8 characters.'),
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    helperText: _accountExists == true ? null : 'At least 8 characters.',
+                  ),
                 ),
                 if (auth.lastError != null && !_isSubmitting) ...[
                   const SizedBox(height: 12),
@@ -122,7 +181,7 @@ class _CreateOrganisationScreenState extends ConsumerState<CreateOrganisationScr
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Create organisation'),
+                      : Text(_accountExists == true ? 'Create with this account' : 'Create organisation'),
                 ),
               ],
             ),

@@ -55,6 +55,14 @@ export class AuthController {
     return this.authService.checkPhoneExists(dto);
   }
 
+  // Looks up an organisation's details and authStrategy by its joinCode
+  // — public, read-only. Needed by join flows before authentication.
+  @Post('organisation-by-code')
+  @HttpCode(HttpStatus.OK)
+  getOrganisationByCode(@Body() body: { joinCode: string }) {
+    return this.authService.getOrganisationByCode(body.joinCode);
+  }
+
   // Authenticated counterpart to join-organisation, for a member who's
   // already logged in and just wants to join a second organisation — see
   // AuthService.joinAdditionalOrganisation.
@@ -85,6 +93,15 @@ export class AuthController {
     @Body() dto: SwitchOrganisationDto,
   ) {
     return this.authService.switchOrganisation(user, dto);
+  }
+
+  @Post('organisations/default')
+  @UseGuards(JwtAuthGuard)
+  setDefaultOrganisation(
+    @CurrentUser() user: AuthTokenPayload,
+    @Body() body: { organisationId: string },
+  ) {
+    return this.authService.setDefaultOrganisation(user, body.organisationId);
   }
 
   @Post('login')

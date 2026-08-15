@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { apiFetchOrNull } from "@/lib/api-client";
 import { requireSession } from "@/lib/session";
 import { CLAIM_STATUS_META } from "@/lib/status-meta";
@@ -44,15 +45,13 @@ export default async function ClaimsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Claims</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Every claim is checked against the real eligibility rules before it can even be filed.
-          </p>
-        </div>
-        {activeRules && members && <NewClaimDialog rules={activeRules} members={members} />}
-      </div>
+      <DashboardHeader
+        title="Claims"
+        subtitle="Every claim is checked against the real eligibility rules before it can even be filed."
+        icon={Gavel}
+        theme="indigo"
+        rightAction={activeRules && members && <NewClaimDialog rules={activeRules} members={members} />}
+      />
 
       <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
         <FilterChip href="/claims" active={!activeStatus}>
@@ -80,7 +79,7 @@ export default async function ClaimsPage({
           <p className="text-sm text-muted-foreground">No claims match this filter.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border/60 shadow-md">
+        <div className="overflow-hidden rounded-xl border border-glass-border bg-glass-card/35 backdrop-blur-md shadow-lg transition-all duration-300 hover:shadow-xl dark:bg-glass-card/15">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">

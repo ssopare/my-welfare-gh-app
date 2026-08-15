@@ -31,8 +31,10 @@ model Account {
   // (AuthService rejects account creation without one) and the mobile app
   // hard-gates any pre-existing account without one behind a
   // complete-your-profile screen before it can reach the rest of the app.
-  name         String?
-  createdAt    DateTime @default(now())
+  name                  String?
+  avatarUrl             String?
+  defaultOrganisationId String?
+  createdAt             DateTime @default(now())
 
   members Member[]
 
@@ -48,6 +50,7 @@ model Organisation {
   country   String   @default("GH")
   currency  String   @default("GHS")
   status    String   @default("trial")
+  logoUrl   String?
   createdAt DateTime @default(now())
 
   // A short, human-shareable alternative to the UUID above — generated at
@@ -70,6 +73,9 @@ model Organisation {
   // only one active officer." Off by default for exactly that reason.
   makerCheckerEnabled Boolean @default(false)
 
+  // Configure how members authenticate (Password vs passwordless OTP vs 2FA)
+  authStrategy AuthStrategy @default(PASSWORD_ONLY)
+
   members                  Member[]
   chapters                 Chapter[]
   contributionPlans        ContributionPlan[]
@@ -88,8 +94,20 @@ model Organisation {
   notifications            Notification[]
   subscription             Subscription?
   budgets                  Budget[]
+  elections                Election[]
+  settlementAccount        SettlementAccount?
+  payoutRecipients         PayoutRecipient[]
+  payoutRequests           PayoutRequest[]
+  fundControlPolicy        FundControlPolicy?
+  reconciliationRecords    ReconciliationRecord[]
 
   @@map("organisations")
+}
+
+enum AuthStrategy {
+  PASSWORD_ONLY
+  OTP_ONLY
+  PASSWORD_AND_OTP
 }
 
 // Optional sub-grouping within a tenant (FR-MEM-04's "chapters/campuses").
@@ -179,6 +197,8 @@ model Member {
   roleAssignments RoleAssignment[]
   claims          Claim[]
   notifications   Notification[]
+  payoutRequests  PayoutRequest[]
+  payoutApprovals PayoutApproval[]
 
   @@index([organisationId])
   @@index([accountId])
@@ -346,6 +366,7 @@ model Fund {
   journalEntries  JournalEntry[]
   paymentIntents  PaymentIntent[]
   defaultForPlans ContributionPlan[]
+  payoutRequests  PayoutRequest[]
 
   @@index([organisationId])
   @@map("funds")
@@ -1025,4 +1046,228 @@ model Subscription {
   plan         SubscriptionPlan? @relation(fields: [planId], references: [id])
 
   @@map("subscriptions")
+}
+
+enum ElectionType {
+  OFFICER
+  ISSUE
+}
+
+enum ElectionStatus {
+  DRAFT
+  NOMINATION
+  VETTING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum NominationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Election {
+  id                            String            @id @default(uuid())
+  organisationId                String
+  title                         String
+  description                   String?
+  type                          ElectionType
+  status                        ElectionStatus    @default(DRAFT)
+  isAnonymous                   Boolean           @default(true)
+  quorumPercentage              Decimal           @default(50.00) @db.Decimal(5, 2)
+  passPercentage                Decimal           @default(50.00) @db.Decimal(5, 2)
+  nominationStartsAt            DateTime?
+  nominationEndsAt              DateTime?
+  minNomineeTenureMonths        Int               @default(0)
+  requireGoodStandingForNominee Boolean           @default(true)
+  requireNoArrearsForNominee    Boolean           @default(true)
+  minSecondersRequired          Int               @default(0)
+  startsAt                      DateTime
+  endsAt                        DateTime
+  createdAt                     DateTime          @default(now())
+
+  organisation     Organisation      @relation(fields: [organisationId], references: [id])
+  nominations      Nomination[]
+  nominees         Nominee[]
+  options          IssueOption[]
+  voterRegistries  VoterRegistry[]
+  anonymousBallots AnonymousBallot[]
+  publicBallots    PublicBallot[]
+
+  @@map("elections")
+}
+
+model Nomination {
+  id               String           @id @default(uuid())
+  electionId       String
+  nomineeMemberId  String
+  nominatorId      String
+  statement        String?
+  status           NominationStatus @default(PENDING)
+  rejectionReason  String?
+  seconders        String[]
+  createdAt        DateTime         @default(now())
+  
+  election         Election         @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@map("nominations")
+}
+
+model Nominee {
+  id             String         @id @default(uuid())
+  electionId     String
+  memberId       String
+  bio            String?
+  manifesto      String?
+  
+  election       Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  publicBallots  PublicBallot[]
+
+  @@map("nominees")
+}
+
+model IssueOption {
+  id             String         @id @default(uuid())
+  electionId     String
+  text           String
+  
+  election       Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  publicBallots  PublicBallot[]
+
+  @@map("issue_options")
+}
+
+model VoterRegistry {
+  id             String         @id @default(uuid())
+  electionId     String
+  memberId       String
+  votedAt        DateTime       @default(now())
+  
+  election       Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  
+  @@unique([electionId, memberId])
+  @@map("voter_registries")
+}
+
+model PublicBallot {
+  id             String         @id @default(uuid())
+  electionId     String
+  memberId       String
+  nomineeId      String?
+  issueOptionId  String?
+  
+  election       Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  nominee        Nominee?       @relation(fields: [nomineeId], references: [id], onDelete: SetNull)
+  issueOption    IssueOption?   @relation(fields: [issueOptionId], references: [id], onDelete: SetNull)
+  
+  @@unique([electionId, memberId])
+  @@map("public_ballots")
+}
+
+model AnonymousBallot {
+  id             String         @id @default(uuid())
+  electionId     String
+  nomineeId      String?
+  issueOptionId  String?
+  
+  election       Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@map("anonymous_ballots")
+}
+
+model SettlementAccount {
+  id                    String       @id @default(uuid())
+  organisationId        String       @unique
+  providerSubaccountCode String
+  bankName              String
+  accountNumber         String
+  verified              Boolean      @default(false)
+  createdAt             DateTime     @default(now())
+
+  organisation          Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@map("settlement_accounts")
+}
+
+model PayoutRecipient {
+  id             String         @id @default(uuid())
+  organisationId String
+  name           String
+  type           String
+  accountNumber  String
+  bankCode       String
+  isAllowlisted  Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+
+  organisation   Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  payoutRequests PayoutRequest[]
+
+  @@map("payout_recipients")
+}
+
+model PayoutRequest {
+  id             String         @id @default(uuid())
+  organisationId String
+  amountValue    Decimal        @db.Decimal(12, 2)
+  currency       String         @default("GHS")
+  fundId         String
+  recipientId    String
+  purpose        String
+  status         String         @default("PENDING")
+  requesterId    String
+  createdAt      DateTime       @default(now())
+  completedAt    DateTime?
+
+  organisation   Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  fund           Fund           @relation(fields: [fundId], references: [id])
+  recipient      PayoutRecipient @relation(fields: [recipientId], references: [id])
+  requester      Member         @relation(fields: [requesterId], references: [id])
+  approvals      PayoutApproval[]
+
+  @@map("payout_requests")
+}
+
+model PayoutApproval {
+  id             String         @id @default(uuid())
+  payoutRequestId String
+  officerId      String
+  decision       String
+  comment        String?
+  createdAt      DateTime       @default(now())
+
+  payoutRequest  PayoutRequest  @relation(fields: [payoutRequestId], references: [id], onDelete: Cascade)
+  officer        Member         @relation(fields: [officerId], references: [id])
+
+  @@map("payout_approvals")
+}
+
+model FundControlPolicy {
+  id                        String       @id @default(uuid())
+  organisationId            String       @unique
+  dailyLimitValue           Decimal      @db.Decimal(12, 2)
+  monthlyLimitValue         Decimal      @db.Decimal(12, 2)
+  thresholdOneApproverValue Decimal      @db.Decimal(12, 2)
+  thresholdTwoApproversValue Decimal      @db.Decimal(12, 2)
+
+  organisation              Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@map("fund_control_policies")
+}
+
+model ReconciliationRecord {
+  id                   String       @id @default(uuid())
+  organisationId       String
+  providerReference    String
+  ledgerAmountValue    Decimal      @db.Decimal(12, 2)
+  settlementAmountValue Decimal      @db.Decimal(12, 2)
+  feeAmountValue       Decimal      @db.Decimal(12, 2)
+  matched              Boolean      @default(false)
+  flaggedReason        String?
+  createdAt            DateTime     @default(now())
+
+  organisation         Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@map("reconciliation_records")
 }

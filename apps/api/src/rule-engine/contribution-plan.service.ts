@@ -112,7 +112,9 @@ export class ContributionPlanService {
           where: {
             organisationId: actor.organisationId,
             status: { in: ['ACTIVE', 'PROBATION', 'GRACE'] },
-            chapterId: updatedPlan.chapterId ? updatedPlan.chapterId : undefined,
+            chapterId: updatedPlan.chapterId
+              ? updatedPlan.chapterId
+              : undefined,
           },
         });
 

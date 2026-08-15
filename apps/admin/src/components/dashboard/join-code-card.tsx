@@ -1,17 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, UserPlus } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DashboardHeader } from "./dashboard-header";
 
-// The one place an admin can actually find and share the code a member
-// needs to join — nothing surfaced this anywhere before (confirmed by
-// grep: registration used to redirect straight to the dashboard with no
-// success screen, and no settings page existed either). Placed on the
-// dashboard itself since that's exactly where an admin lands right after
-// registering, when they most need it.
-export function JoinCodeCard({ joinCode, legalName }: { joinCode: string; legalName: string }) {
+export function JoinCodeWidget({ joinCode }: { joinCode: string }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -21,38 +14,28 @@ export function JoinCodeCard({ joinCode, legalName }: { joinCode: string; legalN
   }
 
   return (
-    <DashboardHeader
-      title="Invite members to"
-      highlightedText={legalName}
-      subtitle="Share this join code — they'll enter it alongside their phone number."
-      icon={UserPlus}
-      badgeText="Member Onboarding"
-      rightAction={
-        <div className="flex items-center gap-3">
-          <span className="rounded-md border border-primary/20 bg-primary/10 px-4 py-2 font-mono text-sm font-bold tracking-wide text-primary shadow-inner tabular-nums">
-            {joinCode}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={copy}
-            className="border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary font-bold uppercase tracking-widest text-[10px] px-4 py-4 rounded-xl shadow-md transition-all"
-          >
-            {copied ? (
-              <>
-                <Check className="text-status-good" aria-hidden />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy aria-hidden />
-                Copy
-              </>
-            )}
-          </Button>
-        </div>
-      }
-    />
+    <div className="flex items-center gap-2 rounded-xl bg-white/10 p-1 border border-white/10 backdrop-blur-md">
+      <span className="px-3 py-1 text-xs font-mono font-bold tracking-wider text-white select-all">
+        {joinCode}
+      </span>
+      <Button
+        type="button"
+        size="xs"
+        onClick={copy}
+        className="h-7 rounded-lg bg-white px-2.5 text-[10px] font-black uppercase tracking-wider text-slate-950 hover:bg-white/90 shadow-sm transition-all"
+      >
+        {copied ? (
+          <>
+            <Check className="size-3 text-status-good animate-in fade-in zoom-in-50 duration-200" />
+            Copied
+          </>
+        ) : (
+          <>
+            <Copy className="size-3" />
+            Copy Code
+          </>
+        )}
+      </Button>
+    </div>
   );
 }

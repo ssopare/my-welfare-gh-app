@@ -4,8 +4,13 @@ export class LoginDto {
   @IsString()
   phoneNumber!: string;
 
+  @IsOptional()
   @IsString()
-  password!: string;
+  password?: string;
+
+  @IsOptional()
+  @IsString()
+  otpCode?: string;
 
   // Required only when the Account has more than one Membership — Phase 1
   // doesn't build the polished multi-group switcher (§24.1), just the data

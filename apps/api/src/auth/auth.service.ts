@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { Prisma } from '../../generated/prisma/client';
+import { AuthStrategy, Prisma } from '../../generated/prisma/client';
 import { NotificationService } from '../notifications/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
@@ -65,20 +65,36 @@ export class AuthService {
     private readonly notifications: NotificationService,
   ) {}
 
+  // Mirrors joinOrganisation's existing/new account branching below —
+  // founding a group from a phone number that already has an Account no
+  // longer dead-ends with a Conflict; it verifies the password and founds
+  // the new organisation under that *existing* Account instead, same as
+  // if the caller had logged in first and used createAdditionalOrganisation.
+  // Only a genuinely new phone number still creates a fresh Account (and
+  // still requires a name for it).
   async registerOrganisation(dto: RegisterOrganisationDto) {
-    const existing = await this.prisma.account.findUnique({
+    let account = await this.prisma.account.findUnique({
       where: { phoneNumber: dto.phoneNumber },
     });
-    if (existing) {
-      throw new ConflictException(
-        'An account with this phone number already exists',
-      );
-    }
 
-    const passwordHash = await bcrypt.hash(dto.password, PASSWORD_SALT_ROUNDS);
-    const account = await this.prisma.account.create({
-      data: { phoneNumber: dto.phoneNumber, passwordHash, name: dto.name },
-    });
+    if (account) {
+      if (!(await bcrypt.compare(dto.password, account.passwordHash))) {
+        throw new UnauthorizedException('Invalid phone number or password');
+      }
+    } else {
+      if (!dto.name) {
+        throw new BadRequestException(
+          'A name is required to create a new account',
+        );
+      }
+      const passwordHash = await bcrypt.hash(
+        dto.password,
+        PASSWORD_SALT_ROUNDS,
+      );
+      account = await this.prisma.account.create({
+        data: { phoneNumber: dto.phoneNumber, passwordHash, name: dto.name },
+      });
+    }
 
     const organisation = await this.provisionOrganisationWithJoinCode(dto);
 
@@ -99,13 +115,15 @@ export class AuthService {
     });
   }
 
-  // FR-ONB-01's other direction: an already-authenticated account founding
-  // an *additional* organisation, rather than registerOrganisation's
-  // brand-new-Account path (which explicitly refuses a phone number that's
-  // already registered — see the ConflictException above). Same founding-
-  // admin setup, just keyed to the caller's existing accountId instead of
-  // creating a new one, and returning a token scoped to the new org since
-  // every session here is single-org — the caller lands in the new
+  // FR-ONB-01's other direction: an *already-authenticated* account
+  // founding an additional organisation. registerOrganisation above now
+  // also reuses an existing Account when the phone number matches one —
+  // the difference here is this needs no password at all, since a live
+  // JWT already proves identity; it's the zero-friction path once you're
+  // signed in, vs. registerOrganisation's log-back-in-with-a-password path
+  // for someone who isn't. Same founding-admin setup, just keyed to the
+  // caller's existing accountId, returning a token scoped to the new org
+  // since every session here is single-org — the caller lands in the new
   // organisation's context immediately, the same way registering does.
   async createAdditionalOrganisation(
     actor: AuthTokenPayload,
@@ -247,25 +265,99 @@ export class AuthService {
     return organisation.id;
   }
 
+  async getOrganisationByCode(joinCode: string) {
+    if (!joinCode) {
+      throw new BadRequestException('Join code is required');
+    }
+    const organisation = await this.prisma.withJoinCodeLookupContext((tx) =>
+      tx.organisation.findFirst({
+        where: { joinCode },
+        select: { id: true, legalName: true, authStrategy: true },
+      }),
+    );
+    if (!organisation) {
+      throw new NotFoundException('Invalid join code');
+    }
+    return organisation;
+  }
+
+  private async verifyAuthCredentials(
+    authStrategy: 'PASSWORD_ONLY' | 'OTP_ONLY' | 'PASSWORD_AND_OTP',
+    credentials: { password?: string; otpCode?: string },
+    accountHash?: string,
+  ) {
+    // 1. Password Verification (if required)
+    if (
+      authStrategy === 'PASSWORD_ONLY' ||
+      authStrategy === 'PASSWORD_AND_OTP'
+    ) {
+      if (!credentials.password) {
+        throw new BadRequestException(
+          'Password is required for this organisation',
+        );
+      }
+      if (
+        !accountHash ||
+        !(await bcrypt.compare(credentials.password, accountHash))
+      ) {
+        throw new UnauthorizedException('Invalid phone number or password');
+      }
+    }
+
+    // 2. OTP Verification (if required)
+    if (authStrategy === 'OTP_ONLY' || authStrategy === 'PASSWORD_AND_OTP') {
+      if (!credentials.otpCode) {
+        throw new BadRequestException(
+          'SMS OTP code is required for this organisation',
+        );
+      }
+      // Mock OTP validation: accept '123456' as valid code
+      if (credentials.otpCode !== '123456') {
+        throw new UnauthorizedException('Invalid SMS OTP code');
+      }
+    }
+  }
+
   async joinOrganisation(dto: JoinOrganisationDto) {
     const organisationId = await this.resolveOrganisationId(dto);
+
+    const organisation = await this.prisma.withJoinCodeLookupContext((tx) =>
+      tx.organisation.findUnique({
+        where: { id: organisationId },
+        select: { authStrategy: true },
+      }),
+    );
+    const strategy = organisation?.authStrategy ?? AuthStrategy.PASSWORD_ONLY;
 
     let account = await this.prisma.account.findUnique({
       where: { phoneNumber: dto.phoneNumber },
     });
 
     if (account) {
-      if (!(await bcrypt.compare(dto.password, account.passwordHash))) {
-        throw new UnauthorizedException('Invalid phone number or password');
-      }
+      await this.verifyAuthCredentials(strategy, dto, account.passwordHash);
     } else {
+      if (strategy === 'PASSWORD_ONLY' || strategy === 'PASSWORD_AND_OTP') {
+        if (!dto.password) {
+          throw new BadRequestException(
+            'Password is required to create a new account',
+          );
+        }
+      }
+      if (strategy === 'OTP_ONLY' || strategy === 'PASSWORD_AND_OTP') {
+        if (dto.otpCode !== '123456') {
+          throw new UnauthorizedException('Invalid SMS OTP code');
+        }
+      }
+
       if (!dto.name) {
         throw new BadRequestException(
           'A name is required to create a new account',
         );
       }
+      const passwordToHash =
+        dto.password || Math.random().toString(36).slice(-10);
       const passwordHash = await bcrypt.hash(
-        dto.password,
+        passwordToHash,
         PASSWORD_SALT_ROUNDS,
       );
       account = await this.prisma.account.create({
@@ -449,10 +541,7 @@ export class AuthService {
     const account = await this.prisma.account.findUnique({
       where: { phoneNumber: dto.phoneNumber },
     });
-    if (
-      !account ||
-      !(await bcrypt.compare(dto.password, account.passwordHash))
-    ) {
+    if (!account) {
       throw new UnauthorizedException('Invalid phone number or password');
     }
 
@@ -465,33 +554,50 @@ export class AuthService {
       );
     }
 
-    let member = memberships[0];
-    if (memberships.length > 1) {
-      if (!dto.organisationId) {
-        // The password already checked out above, so revealing which
-        // organisations this account belongs to here is safe — same
-        // "authenticate before disclosing membership" ordering as
-        // everywhere else. Lets the frontend render real organisation
-        // names instead of demanding a memorized raw id (see
-        // hydrateMembershipOrganisations).
-        const organisations =
-          await this.hydrateMembershipOrganisations(memberships);
-        throw new BadRequestException({
-          message:
-            'This account belongs to multiple organisations; specify organisationId',
-          organisations,
-        });
+    let targetOrgId = dto.organisationId;
+    if (!targetOrgId) {
+      if (memberships.length > 1) {
+        // Automatically resolve the target organisation dynamically:
+        // 1. Use defaultOrganisationId if set and user has membership there.
+        // 2. Otherwise, check for ADMIN memberships.
+        // 3. Otherwise, pick the first membership.
+        const defaultOrg = account.defaultOrganisationId;
+        const hasDefaultMembership =
+          defaultOrg &&
+          memberships.some((m) => m.organisationId === defaultOrg);
+        if (hasDefaultMembership) {
+          targetOrgId = defaultOrg;
+        } else {
+          const adminMembership = memberships.find((m) => m.role === 'ADMIN');
+          targetOrgId = adminMembership
+            ? adminMembership.organisationId
+            : memberships[0].organisationId;
+        }
+      } else {
+        targetOrgId = memberships[0].organisationId;
       }
-      const match = memberships.find(
-        (m) => m.organisationId === dto.organisationId,
+    } else {
+      const hasMembership = memberships.some(
+        (m) => m.organisationId === targetOrgId,
       );
-      if (!match) {
+      if (!hasMembership) {
         throw new UnauthorizedException(
           'Not a member of the specified organisation',
         );
       }
-      member = match;
     }
+
+    const organisation = await this.prisma.withTenant(targetOrgId, (tx) =>
+      tx.organisation.findUnique({
+        where: { id: targetOrgId },
+        select: { authStrategy: true },
+      }),
+    );
+    const strategy = organisation?.authStrategy ?? AuthStrategy.PASSWORD_ONLY;
+
+    await this.verifyAuthCredentials(strategy, dto, account.passwordHash);
+
+    const member = memberships.find((m) => m.organisationId === targetOrgId)!;
 
     return this.issueToken({
       accountId: account.id,
@@ -512,7 +618,11 @@ export class AuthService {
   // currentOrganisationId is omitted pre-login (login() has no "current"
   // org yet to mark) — every entry's isCurrent is then simply false.
   private async hydrateMembershipOrganisations(
-    memberships: { organisationId: string; role: 'ADMIN' | 'MEMBER'; status: string }[],
+    memberships: {
+      organisationId: string;
+      role: 'ADMIN' | 'MEMBER';
+      status: string;
+    }[],
     currentOrganisationId?: string,
   ) {
     const organisations: {
@@ -549,13 +659,21 @@ export class AuthService {
   // id. Same cross-tenant discovery call login() and
   // joinOrganisationForAccount() already use.
   async listMyOrganisations(actor: AuthTokenPayload) {
+    const account = await this.prisma.account.findUnique({
+      where: { id: actor.sub },
+      select: { defaultOrganisationId: true },
+    });
     const memberships = await this.prisma.withAccount(actor.sub, (tx) =>
       tx.member.findMany({ where: { accountId: actor.sub } }),
     );
-    return this.hydrateMembershipOrganisations(
+    const orgs = await this.hydrateMembershipOrganisations(
       memberships,
       actor.organisationId,
     );
+    return orgs.map((o) => ({
+      ...o,
+      isDefault: o.organisationId === account?.defaultOrganisationId,
+    }));
   }
 
   // Reissues a token scoped to a *different* organisation the caller's
@@ -585,6 +703,27 @@ export class AuthService {
       organisationId: membership.organisationId,
       role: membership.role,
     });
+  }
+
+  async setDefaultOrganisation(
+    actor: AuthTokenPayload,
+    organisationId: string,
+  ) {
+    const membership = await this.prisma.withAccount(actor.sub, (tx) =>
+      tx.member.findFirst({
+        where: { accountId: actor.sub, organisationId },
+      }),
+    );
+    if (!membership) {
+      throw new BadRequestException(
+        'You are not a member of the specified organisation',
+      );
+    }
+    await this.prisma.account.update({
+      where: { id: actor.sub },
+      data: { defaultOrganisationId: organisationId },
+    });
+    return { success: true };
   }
 
   private issueToken(params: {

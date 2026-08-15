@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState, type FocusEvent } from "react";
 import Link from "next/link";
 import { Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,12 +13,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { registerAction, type RegisterFormState } from "./actions";
+import { checkPhoneAction, registerAction, type RegisterFormState } from "./actions";
 
 const INITIAL_STATE: RegisterFormState = { error: null };
 
 export function RegisterForm() {
   const [state, formAction, isPending] = useActionState(registerAction, INITIAL_STATE);
+  // Same "don't re-collect what we already know" pattern as JoinForm — a
+  // phone number that already has an Account skips the Name field and
+  // founds this new organisation under that existing Account (verified by
+  // password) instead of trying to create a second identity. See
+  // AuthService.registerOrganisation.
+  const [accountExists, setAccountExists] = useState<boolean | null>(null);
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false);
+  const [lastCheckedPhone, setLastCheckedPhone] = useState("");
+
+  async function handlePhoneBlur(event: FocusEvent<HTMLInputElement>) {
+    const phone = event.target.value.trim();
+    if (!phone || phone === lastCheckedPhone) return;
+    setIsCheckingPhone(true);
+    try {
+      const { exists } = await checkPhoneAction(phone);
+      setLastCheckedPhone(phone);
+      setAccountExists(exists);
+    } finally {
+      setIsCheckingPhone(false);
+    }
+  }
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
@@ -47,20 +68,6 @@ export function RegisterForm() {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="name">Your name</Label>
-        <Input
-          id="name"
-          name="name"
-          autoComplete="name"
-          placeholder="e.g. Kofi Mensah"
-          required
-        />
-        <p className="text-xs text-muted-foreground">
-          Carries through every organisation you&apos;re a member of.
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
         <Label htmlFor="phoneNumber">Your phone number</Label>
         <Input
           id="phoneNumber"
@@ -69,11 +76,28 @@ export function RegisterForm() {
           autoComplete="tel"
           placeholder="+233 20 000 0000"
           required
+          onBlur={handlePhoneBlur}
         />
-        <p className="text-xs text-muted-foreground">
-          You&apos;ll be the founding administrator, signed in with this number.
-        </p>
+        {isCheckingPhone && <p className="text-xs text-muted-foreground">Checking…</p>}
+        {accountExists === true && !isCheckingPhone && (
+          <p className="text-xs text-primary">
+            Welcome back — this number already has an account. Enter its password below to found this group with it.
+          </p>
+        )}
+        {accountExists !== true && (
+          <p className="text-xs text-muted-foreground">
+            You&apos;ll be the founding administrator, signed in with this number.
+          </p>
+        )}
       </div>
+
+      {accountExists !== true && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="name">Your name</Label>
+          <Input id="name" name="name" autoComplete="name" placeholder="e.g. Kofi Mensah" required />
+          <p className="text-xs text-muted-foreground">Carries through every organisation you&apos;re a member of.</p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="password">Password</Label>
@@ -81,11 +105,11 @@ export function RegisterForm() {
           id="password"
           name="password"
           type="password"
-          autoComplete="new-password"
+          autoComplete={accountExists === true ? "current-password" : "new-password"}
           minLength={8}
           required
         />
-        <p className="text-xs text-muted-foreground">At least 8 characters.</p>
+        {accountExists !== true && <p className="text-xs text-muted-foreground">At least 8 characters.</p>}
       </div>
 
       {state.error && (
@@ -103,7 +127,7 @@ export function RegisterForm() {
         ) : (
           <>
             <Sparkles aria-hidden />
-            Create organisation
+            {accountExists === true ? "Create with this account" : "Create organisation"}
           </>
         )}
       </Button>

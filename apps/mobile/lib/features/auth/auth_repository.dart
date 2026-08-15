@@ -1,5 +1,6 @@
 import '../../core/api/api_client.dart';
 import '../../core/models/auth_identity.dart';
+import '../../core/models/my_organisation_membership.dart';
 import '../../core/storage/token_storage.dart';
 
 class AuthRepository {
@@ -69,6 +70,46 @@ class AuthRepository {
     return me();
   }
 
+  // Every organisation this account belongs to, current one flagged —
+  // powers the switcher screen. Side-effect free, same reasoning as
+  // checkPhoneExists: a plain lookup, not an auth state change.
+  Future<List<MyOrganisationMembership>> listMyOrganisations() async {
+    final res = await _api.dio.get('/auth/organisations');
+    return (res.data as List)
+        .map((e) => MyOrganisationMembership.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  // Reissues the token scoped to a different organisation the account
+  // already belongs to — no password needed, the JWT already proves who
+  // they are. Mobile counterpart to the admin console's
+  // switchOrganisationAction, same /auth/organisations/switch endpoint.
+  Future<AuthIdentity> switchOrganisation({required String organisationId}) async {
+    final res = await _api.dio.post('/auth/organisations/switch', data: {
+      'organisationId': organisationId,
+    });
+    await _tokenStorage.save(res.data['accessToken'] as String);
+    return me();
+  }
+
+  // Authenticated counterpart to registerOrganisation below — founds a new
+  // organisation for the caller's *existing* account (JWT already proves
+  // who they are), rather than creating a fresh Account with a phone
+  // number that might collide with one they already have. Mirrors the
+  // admin console's /organisations/new (createAdditionalOrganisationAction):
+  // just legalName + organisationType, no name/phone/password re-entry.
+  Future<AuthIdentity> createAdditionalOrganisation({
+    required String legalName,
+    required String organisationType,
+  }) async {
+    final res = await _api.dio.post('/auth/organisations', data: {
+      'legalName': legalName,
+      'organisationType': organisationType,
+    });
+    await _tokenStorage.save(res.data['accessToken'] as String);
+    return me();
+  }
+
   // The mobile counterpart to the admin console's "create organisation"
   // flow — founds a brand-new organisation and becomes its admin. Not
   // technically web-only (the backend endpoint has never cared which app
@@ -106,8 +147,12 @@ class AuthRepository {
     return account['name'] as String?;
   }
 
-  Future<void> updateOwnName(String name) {
-    return _api.dio.patch('/members/me/profile', data: {'name': name});
+  Future<void> updateOwnProfile(String name, {String? avatarUrl}) {
+    final payload = <String, dynamic>{'name': name};
+    if (avatarUrl != null) {
+      payload['avatarUrl'] = avatarUrl;
+    }
+    return _api.dio.patch('/members/me/profile', data: payload);
   }
 
   /// Never trusts a stored token's mere presence — same "always verify

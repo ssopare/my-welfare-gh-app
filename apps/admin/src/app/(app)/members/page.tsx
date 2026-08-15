@@ -4,6 +4,7 @@ import { ShieldAlert, Users } from "lucide-react";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { BulkImportMembersDialog } from "@/components/members/bulk-import-members-dialog";
 import { MembersTable } from "@/components/members/members-table";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { apiFetchOrNull } from "@/lib/api-client";
 import { requireSession } from "@/lib/session";
 import { MEMBER_STATUS_META } from "@/lib/status-meta";
@@ -17,14 +18,6 @@ import {
 export const metadata: Metadata = {
   title: "Members — Welfare Platform",
 };
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
 
 export default async function MembersPage({
   searchParams,
@@ -58,30 +51,29 @@ export default async function MembersPage({
         ? members
         : members.filter((m) => m.status !== "EXITED");
 
-  const pendingMemberIds = members?.filter((m) => m.status === "PENDING").map((m) => m.id) ?? [];
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Members</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {members ? `${activeRosterCount} member${activeRosterCount === 1 ? "" : "s"} on the active roster.` : "The member directory."}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {pendingRemovals && pendingRemovals.length > 0 && (
-            <Link
-              href="/members/removal-requests"
-              className="inline-flex items-center gap-1.5 rounded-full border border-status-warn-border bg-status-warn-bg px-3 py-1.5 text-sm font-medium text-status-warn"
-            >
-              <ShieldAlert className="size-4" aria-hidden />
-              {pendingRemovals.length} pending removal{pendingRemovals.length === 1 ? "" : "s"}
-            </Link>
-          )}
-          <BulkImportMembersDialog />
-        </div>
-      </div>
+      <DashboardHeader
+        title="Members"
+        subtitle={members ? `${activeRosterCount} member${activeRosterCount === 1 ? "" : "s"} on the active roster.` : "The member directory."}
+        icon={Users}
+        theme="blue"
+        rightAction={
+          <div className="flex items-center gap-2 justify-end">
+            {pendingRemovals && pendingRemovals.length > 0 && (
+              <Link
+                href="/members/removal-requests"
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20 transition-all duration-300"
+              >
+                <ShieldAlert className="size-4" aria-hidden />
+                {pendingRemovals.length} pending removal{pendingRemovals.length === 1 ? "" : "s"}
+              </Link>
+            )}
+            <BulkImportMembersDialog />
+          </div>
+        }
+      />
 
       <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
         <FilterChip href="/members" active={!activeStatus && !showAll}>

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTransition } from "react";
-import { Check, ChevronsUpDown, HeartHandshake, Loader2 } from "lucide-react";
+import { Check, ChevronsUpDown, HeartHandshake, Loader2, Star } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -24,7 +25,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { switchOrganisationAction } from "@/app/(app)/organisations/switch-actions";
+import { setDefaultOrganisationAction, switchOrganisationAction } from "@/app/(app)/organisations/switch-actions";
 import { NAV_ITEMS } from "./nav-items";
 import type { MyOrganisationMembership, SubscriptionStatus } from "@welfare/shared-types";
 
@@ -70,6 +71,12 @@ export function AppSidebar({
     });
   }
 
+  function handleSetDefault(organisationId: string) {
+    startTransition(async () => {
+      await setDefaultOrganisationAction(organisationId);
+    });
+  }
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
@@ -104,12 +111,39 @@ export function AppSidebar({
               {myOrganisations.map((org) => (
                 <DropdownMenuItem
                   key={org.organisationId}
-                  disabled={org.isCurrent || isSwitching}
+                  disabled={isSwitching}
                   onSelect={() => !org.isCurrent && handleSwitch(org.organisationId)}
-                  className="flex items-center justify-between gap-2"
+                  className={cn(
+                    "flex items-center justify-between gap-2 cursor-pointer transition-all duration-200",
+                    org.isCurrent && "bg-accent/40 font-medium"
+                  )}
                 >
                   <span className="min-w-0 flex-1 truncate">{org.legalName}</span>
-                  {org.isCurrent && <Check className="size-4 text-primary" aria-hidden />}
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      aria-label={org.isDefault ? "Remove default organisation" : "Set as default organisation"}
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!org.isDefault) {
+                          handleSetDefault(org.organisationId);
+                        }
+                      }}
+                      className="rounded p-0.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                    >
+                      <Star
+                        className={cn(
+                          "size-3.5 transition-all duration-200",
+                          org.isDefault
+                            ? "fill-amber-400 text-amber-400 scale-110"
+                            : "text-muted-foreground/35 hover:text-amber-400 hover:scale-110"
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                    {org.isCurrent && <Check className="size-4 text-primary shrink-0" aria-hidden />}
+                  </div>
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

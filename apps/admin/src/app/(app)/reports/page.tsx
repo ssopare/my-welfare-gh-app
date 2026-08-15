@@ -19,6 +19,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 
 export const metadata: Metadata = {
   title: "Reports — Welfare Platform",
@@ -120,18 +121,18 @@ const REPORTS = [
 export default function ReportsPage() {
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Every report here is a live query over the ledger and claim history — never a stored, separately-editable
-          number.
-        </p>
-      </div>
+      <DashboardHeader
+        title="Reports"
+        subtitle="Every report here is a live query over the ledger and claim history — never a stored, separately-editable number."
+        icon={LineChart}
+        watermarkIcon={ScrollText}
+        theme="emerald"
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {REPORTS.map((report) => (
           <Link key={report.href} href={report.href}>
-            <Card className="h-full border-border/60 shadow-md transition-shadow hover:shadow-lg">
+            <Card className="h-full border-glass-border bg-glass-card/65 shadow-lg backdrop-blur-md transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5 dark:bg-glass-card/45">
               <CardContent className="flex flex-col gap-3">
                 <div className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/15">
                   <report.icon className="size-4" aria-hidden />

@@ -3,6 +3,7 @@ import { CalendarClock, CreditCard } from "lucide-react";
 import { MoneyDisplay } from "@/components/finance/money-display";
 import { StatusBadge } from "@/components/finance/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { apiFetchOrNull } from "@/lib/api-client";
 import { requireSession } from "@/lib/session";
 import { SUBSCRIPTION_STATUS_META } from "@/lib/status-meta";
@@ -33,10 +34,12 @@ export default async function BillingPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Billing</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Your organisation&apos;s own subscription — separate from the welfare fund ledger.</p>
-      </div>
+      <DashboardHeader
+        title="Billing"
+        subtitle="Your organisation's own subscription — separate from the welfare fund ledger."
+        icon={CreditCard}
+        theme="indigo"
+      />
 
       {!subscription ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-16 text-center">
@@ -45,7 +48,7 @@ export default async function BillingPage() {
         </div>
       ) : (
         <>
-          <Card className="border-border/50 bg-card/55 shadow-md backdrop-blur-xl">
+          <Card className="border-glass-border bg-glass-card/65 shadow-lg backdrop-blur-md transition-all duration-300 hover:shadow-xl dark:bg-glass-card/45">
             <CardHeader>
               <CardTitle className="flex items-center justify-between text-base">
                 <span>Current subscription</span>
@@ -98,7 +101,7 @@ export default async function BillingPage() {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {plans.map((plan) => (
-                <Card key={plan.id} className="border-border/60 shadow-md">
+                <Card key={plan.id} className="border-glass-border bg-glass-card/65 shadow-lg backdrop-blur-md transition-all duration-300 hover:shadow-xl dark:bg-glass-card/45">
                   <CardHeader>
                     <CardTitle className="text-base">{plan.name}</CardTitle>
                   </CardHeader>

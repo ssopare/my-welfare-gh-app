@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { apiFetch, apiFetchOrNull, ApiError } from "@/lib/api-client";
 import { requireSession } from "@/lib/session";
 import type {
+  AuthStrategy,
   CreateLedgerAccountInput,
   Fund,
   LedgerAccount,
@@ -166,6 +167,18 @@ export async function updatePaymentAllocationPolicyAction(
     method: "PATCH",
     token,
     body: { paymentAllocationPolicy: policy },
+  });
+  revalidatePath("/ledger");
+}
+
+export async function updateAuthStrategyAction(
+  strategy: AuthStrategy,
+): Promise<void> {
+  const { token } = await requireSession();
+  await apiFetch("/organisation", {
+    method: "PATCH",
+    token,
+    body: { authStrategy: strategy },
   });
   revalidatePath("/ledger");
 }

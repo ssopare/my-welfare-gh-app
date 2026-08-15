@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/finance/status-badge";
 import { AsyncActionButton } from "@/components/ui/async-action-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetchOrNull } from "@/lib/api-client";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { requireSession } from "@/lib/session";
 import { MEMBER_STATUS_META } from "@/lib/status-meta";
 import type { DefaulterPolicy, DefaulterRegisterRow, Organisation } from "@welfare/shared-types";
@@ -29,18 +30,16 @@ export default async function DefaultersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Defaulters</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Members in arrears, with how long each period has been outstanding.
-          </p>
-        </div>
-        <PolicyDialog policy={policy ?? null} />
-      </div>
+      <DashboardHeader
+        title="Defaulters"
+        subtitle="Members in arrears, with how long each period has been outstanding."
+        icon={AlertTriangle}
+        theme="amber"
+        rightAction={<PolicyDialog policy={policy ?? null} />}
+      />
 
       {policy && (
-        <Card className="border-border/50 bg-card/55 shadow-md backdrop-blur-xl">
+        <Card className="border-glass-border bg-glass-card/65 shadow-lg backdrop-blur-md transition-all duration-300 hover:shadow-xl dark:bg-glass-card/45">
           <CardContent className="flex flex-wrap items-center gap-6">
             <div className="flex items-center gap-2">
               <AlertTriangle className="size-4 text-status-warn" aria-hidden />
@@ -60,7 +59,7 @@ export default async function DefaultersPage() {
         </Card>
       )}
 
-      <Card className="border-border/50 shadow-md">
+      <Card className="border-glass-border bg-glass-card/65 shadow-lg backdrop-blur-md transition-all duration-300 hover:shadow-xl dark:bg-glass-card/45">
         <CardHeader>
           <CardTitle className="text-base">Arrears aging</CardTitle>
         </CardHeader>

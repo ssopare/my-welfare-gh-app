@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { AccessTokenResponse } from "@welfare/shared-types";
 import { apiFetch } from "@/lib/api-client";
@@ -22,4 +23,16 @@ export async function switchOrganisationAction(organisationId: string) {
   await setSessionCookie(accessToken);
 
   redirect("/");
+}
+
+export async function setDefaultOrganisationAction(organisationId: string) {
+  const { token } = await requireSession();
+
+  await apiFetch<{ success: boolean }>("/auth/organisations/default", {
+    method: "POST",
+    token,
+    body: { organisationId },
+  });
+
+  revalidatePath("/");
 }

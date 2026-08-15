@@ -645,7 +645,7 @@ describe('Rule engine (e2e)', () => {
         .set('Authorization', `Bearer ${otherOrgAdmin.accessToken}`)
         .expect(404);
 
-      // The regular listActive endpoint must NOT show it yet — it's still
+       // The regular listActive endpoint must NOT show it yet — it's still
       // a draft.
       const activeRes = await request(app.getHttpServer())
         .get('/benefit-rules')
@@ -654,6 +654,80 @@ describe('Rule engine (e2e)', () => {
       expect((activeRes.body as RuleResponse[]).map((r) => r.id)).not.toContain(
         draft.id,
       );
+    });
+  });
+
+  describe('Voluntary and Minimum contribution plans', () => {
+    it('creates, activates, and computes a voluntary contribution plan', async () => {
+      const admin = await registerOrganisation('Voluntary Plan Org');
+      const member = await joinOrganisation(admin.identity.organisationId);
+      await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+
+      // Create draft voluntary plan
+      const planRes = await request(app.getHttpServer())
+        .post('/contribution-plans')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({
+          name: 'Voluntary Development Fund',
+          cadence: 'monthly',
+          amountValue: '0.00',
+          currency: 'GHS',
+          computationType: 'voluntary',
+        })
+        .expect(201);
+      const plan = planRes.body as RuleResponse;
+
+       // Activate it
+      await request(app.getHttpServer())
+        .post(`/contribution-plans/${plan.id}/activate`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ effectiveFrom: new Date().toISOString() })
+        .expect(201);
+
+      // Compute obligation amount
+      const compRes = await request(app.getHttpServer())
+        .post(`/contribution-plans/${plan.id}/compute-obligation`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ memberId: member.identity.memberId, periodDate: new Date().toISOString() })
+        .expect(201);
+      
+      expect(compRes.body.amount).toBe('0.00');
+    });
+
+    it('creates, activates, and computes a minimum contribution plan', async () => {
+      const admin = await registerOrganisation('Minimum Plan Org');
+      const member = await joinOrganisation(admin.identity.organisationId);
+      await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+
+      // Create draft minimum plan (e.g. minimum 20.00)
+      const planRes = await request(app.getHttpServer())
+        .post('/contribution-plans')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({
+          name: 'Minimum Dues',
+          cadence: 'monthly',
+          amountValue: '20.00',
+          currency: 'GHS',
+          computationType: 'minimum',
+        })
+        .expect(201);
+      const plan = planRes.body as RuleResponse;
+
+      // Activate it
+      await request(app.getHttpServer())
+        .post(`/contribution-plans/${plan.id}/activate`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ effectiveFrom: new Date().toISOString() })
+        .expect(201);
+
+      // Compute obligation amount
+      const compRes = await request(app.getHttpServer())
+        .post(`/contribution-plans/${plan.id}/compute-obligation`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ memberId: member.identity.memberId, periodDate: new Date().toISOString() })
+        .expect(201);
+      
+      expect(compRes.body.amount).toBe('20');
     });
   });
 });

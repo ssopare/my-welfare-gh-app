@@ -3,17 +3,22 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/auth_controller.dart';
 import '../../features/auth/complete_profile_screen.dart';
+import '../../features/auth/create_additional_organisation_screen.dart';
 import '../../features/auth/create_organisation_screen.dart';
 import '../../features/auth/join_additional_organisation_screen.dart';
 import '../../features/auth/join_screen.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/auth/onboarding_screen.dart';
 import '../../features/auth/splash_screen.dart';
+import '../../features/auth/switch_organisation_screen.dart';
 import '../../features/claims/claims_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
 import '../../features/profile/profile_screen.dart';
+import '../../features/voting/elections_list_screen.dart';
+import '../../features/voting/ballot_screen.dart';
+import '../../features/payments/treasury_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final auth = ref.watch(authControllerProvider);
@@ -58,6 +63,26 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/join-additional-organisation',
             builder: (context, state) => const JoinAdditionalOrganisationScreen(),
+          ),
+          GoRoute(
+            path: '/switch-organisation',
+            builder: (context, state) => const SwitchOrganisationScreen(),
+          ),
+          GoRoute(
+            path: '/create-additional-organisation',
+            builder: (context, state) => const CreateAdditionalOrganisationScreen(),
+          ),
+          GoRoute(
+            path: '/elections',
+            builder: (context, state) => const ElectionsListScreen(),
+          ),
+          GoRoute(
+            path: '/elections/:id',
+            builder: (context, state) => BallotScreen(electionId: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/treasury',
+            builder: (context, state) => const TreasuryScreen(),
           ),
         ],
       ),

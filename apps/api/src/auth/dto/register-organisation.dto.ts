@@ -1,7 +1,9 @@
-import { IsIn, IsString, MinLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 
-// Tenant self-registration (FR-ONB-01): creates the founding Account +
-// Organisation + an ADMIN Member in one step.
+// Tenant self-registration (FR-ONB-01): founds a new Organisation, and
+// either creates a fresh Account or reuses one that already exists for
+// this phone number (see AuthService.registerOrganisation) + an ADMIN
+// Member in one step.
 export class RegisterOrganisationDto {
   @IsString()
   @MinLength(6)
@@ -12,11 +14,15 @@ export class RegisterOrganisationDto {
   password!: string;
 
   // Account-level identity (not per-membership) — carries through every
-  // org this Account later joins. Always required here since
-  // register-organisation always creates a brand-new Account.
+  // org this Account later joins. Only required (enforced in
+  // AuthService.registerOrganisation, not here — same reasoning as
+  // JoinOrganisationDto.name) when this phone number has no existing
+  // Account yet; an existing Account founding another org keeps its name
+  // from before, untouched.
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  name!: string;
+  name?: string;
 
   @IsString()
   @MinLength(2)

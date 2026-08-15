@@ -24,7 +24,7 @@ export class CreateContributionPlanDto {
   // Only 'fixed' is actually evaluated by RuleEngineService right now — see
   // the schema comment on ContributionPlan.computationType.
   @IsOptional()
-  @IsIn(['fixed'])
+  @IsIn(['fixed', 'voluntary', 'minimum'])
   computationType?: string;
 
   @IsNumberString()

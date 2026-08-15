@@ -14,7 +14,7 @@ import { InitiateContributionPaymentDto } from './dto/initiate-contribution-paym
 import { WebhookPayloadDto } from './dto/webhook-payload.dto';
 import { PAYMENT_PROVIDER } from './providers/payment-provider.interface';
 import type { PaymentProvider } from './providers/payment-provider.interface';
-
+import { PaymentIntent } from '../../generated/prisma/client';
 @Injectable()
 export class PaymentService {
   constructor(
@@ -30,7 +30,7 @@ export class PaymentService {
   async initiateContributionPayment(
     actor: AuthTokenPayload,
     dto: InitiateContributionPaymentDto,
-  ) {
+  ): Promise<PaymentIntent & { displayText?: string }> {
     await requireSelfOrAdmin(this.rbac, actor, dto.memberId);
 
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
@@ -103,67 +103,31 @@ export class PaymentService {
         },
       });
 
-      const rawKey = process.env.PAYSTACK_SECRET_KEY;
-      const isTestMode = !!rawKey?.toLowerCase().includes('test');
+      const settlement = await tx.settlementAccount.findUnique({
+        where: { organisationId: actor.organisationId },
+      });
 
-      console.log(`[PAYMENT FLOW] Detected PAYSTACK_SECRET_KEY: "${rawKey}" | isTestMode: ${isTestMode}`);
-
-      let providerReference = `pending_${randomUUID()}`;
-      let updated;
-      let displayText: string | undefined;
-
-      if (isTestMode) {
-        providerReference = `sandbox_success_${randomUUID()}`;
-        displayText = 'Payment simulated successfully in sandbox environment.';
-
-        console.log(`[PAYMENT FLOW] Executing automated ledger success recording for reference ${providerReference}`);
-
-        // Automatically record ledger entries and mark obligation as paid
-        await this.obligations.recordContributionPaymentInTx(
-          tx,
-          actor.organisationId,
-          intent.memberId,
-          {
-            memberId: intent.memberId,
-            fundId: intent.fundId,
-            amountValue: intent.amountValue.toString(),
-            currency: intent.currency,
-            reference: providerReference,
-            obligationIds: intent.obligationIds.length
-              ? intent.obligationIds
-              : undefined,
-          }
-        );
-
-        updated = await tx.paymentIntent.update({
-          where: { id: intent.id },
-          data: {
-            providerReference,
-            status: 'SUCCEEDED',
-            completedAt: new Date(),
-          },
-        });
-      } else {
-        const result = await this.provider.initiatePayment({
+      const result = await this.provider.initiatePayment({
+        organisationId: actor.organisationId,
+        amountValue: dto.amountValue,
+        currency: dto.currency,
+        channel: dto.channel,
+        phoneNumber: member.account.phoneNumber,
+        momoProvider: dto.momoProvider,
+        metadata: {
           organisationId: actor.organisationId,
-          amountValue: dto.amountValue,
-          currency: dto.currency,
-          channel: dto.channel,
-          phoneNumber: member.account.phoneNumber,
-          momoProvider: dto.momoProvider,
-          metadata: {
-            organisationId: actor.organisationId,
-            reference: intent.id,
-          },
-        });
-        providerReference = result.providerReference;
-        displayText = result.displayText;
+          reference: intent.id,
+        },
+        subaccount: settlement?.verified ? settlement.providerSubaccountCode : undefined,
+      });
 
-        updated = await tx.paymentIntent.update({
-          where: { id: intent.id },
-          data: { providerReference },
-        });
-      }
+      const providerReference = result.providerReference;
+      const displayText = result.displayText;
+
+      const updated = await tx.paymentIntent.update({
+        where: { id: intent.id },
+        data: { providerReference },
+      });
 
       // displayText (e.g. Paystack's MoMo "please dial *170#..." prompt)
       // is presentational only — shown once here, never persisted on the

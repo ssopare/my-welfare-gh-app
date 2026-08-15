@@ -120,23 +120,60 @@ describe('Auth (e2e)', () => {
     trackForCleanup(identity);
   });
 
-  it('rejects registering the same phone number twice', async () => {
+  it('founds a second organisation under the same account when the phone number already exists and the password matches', async () => {
     const phoneNumber = uniquePhone();
-    const payload = {
+    const password = 'correct-horse-battery-staple';
+
+    const { accessToken } = await registerOrganisation({
       phoneNumber,
-      password: 'correct-horse-battery-staple',
-      legalName: 'Duplicate Phone Org',
+      password,
+      legalName: 'Duplicate Phone Org A',
       organisationType: 'voluntary',
-      name: 'Test Admin',
-    };
+    });
+    const identityA = await me(accessToken);
+    trackForCleanup(identityA);
 
-    const { accessToken } = await registerOrganisation(payload);
-    trackForCleanup(await me(accessToken));
-
+    // Wrong password for an existing account is rejected, same as login/join.
     await request(app.getHttpServer())
       .post('/auth/register-organisation')
-      .send({ ...payload, legalName: 'Second Org, Same Phone' })
-      .expect(409);
+      .send({
+        phoneNumber,
+        password: 'wrong-password',
+        legalName: 'Duplicate Phone Org B (wrong password)',
+        organisationType: 'voluntary',
+      })
+      .expect(401);
+
+    // No `name` sent at all — the account already has one from Org A's
+    // registration; the backend must not require (or need) another.
+    const orgBRes = await request(app.getHttpServer())
+      .post('/auth/register-organisation')
+      .send({
+        phoneNumber,
+        password,
+        legalName: 'Duplicate Phone Org B',
+        organisationType: 'voluntary',
+      })
+      .expect(201);
+    const identityB = await me(
+      (orgBRes.body as AccessTokenResponse).accessToken,
+    );
+    expect(identityB.sub).toBe(identityA.sub);
+    expect(identityB.organisationId).not.toBe(identityA.organisationId);
+    expect(identityB.role).toBe('ADMIN');
+    createdOrgIds.push(identityB.organisationId);
+  });
+
+  it('rejects registering a brand-new phone number with no name', async () => {
+    await request(app.getHttpServer())
+      .post('/auth/register-organisation')
+      .send({
+        phoneNumber: uniquePhone(),
+        password: 'correct-horse-battery-staple',
+        legalName: 'Nameless Founder Org',
+        organisationType: 'voluntary',
+      })
+      .expect(400);
   });
 
   it('rejects an invalid organisationType', async () => {
@@ -216,10 +253,7 @@ describe('Auth (e2e)', () => {
     trackForCleanup(identityB);
   });
 
-  it('login requires organisationId when an account has multiple memberships', async () => {
-    // No "join an existing org" endpoint exists yet (out of scope for this
-    // auth slice — see decisions memory on the multi-group switcher being a
-    // Phase 2 feature), so the second Membership is seeded directly.
+  it('login automatically selects the highest role organisation when an account has multiple memberships and organisationId is omitted', async () => {
     const phoneNumber = uniquePhone();
     const password = 'correct-horse-battery-staple';
     const registered = await registerOrganisation({
@@ -247,36 +281,61 @@ describe('Auth (e2e)', () => {
     createdOrgIds.push(firstIdentity.organisationId, secondOrg.id);
     createdAccountIds.push(firstIdentity.sub);
 
-    const ambiguous = await request(app.getHttpServer())
+    // Login without organisationId resolves targetOrgId to the ADMIN one.
+    const res = await request(app.getHttpServer())
       .post('/auth/login')
       .send({ phoneNumber, password })
-      .expect(400);
-    // The error body carries real organisation names now, not just a
-    // message demanding a raw id — lets the login form render a picker.
-    const ambiguousBody = ambiguous.body as {
-      message: string;
-      organisations: { organisationId: string; legalName: string }[];
-    };
-    expect(ambiguousBody.organisations).toHaveLength(2);
-    expect(
-      ambiguousBody.organisations.find((o) => o.organisationId === secondOrg.id)
-        ?.legalName,
-    ).toBe('Multi-org Second Org');
-    expect(
-      ambiguousBody.organisations.find(
-        (o) => o.organisationId === firstIdentity.organisationId,
-      )?.legalName,
-    ).toBe('Multi-org Home Org');
-
-    const disambiguated = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ phoneNumber, password, organisationId: secondOrg.id })
       .expect(200);
-    const disambiguatedIdentity = await me(
-      (disambiguated.body as AccessTokenResponse).accessToken,
+
+    const identity = await me((res.body as AccessTokenResponse).accessToken);
+    expect(identity.organisationId).toBe(firstIdentity.organisationId);
+    expect(identity.role).toBe('ADMIN');
+  });
+
+  it('login prioritises defaultOrganisationId when set on the account', async () => {
+    const phoneNumber = uniquePhone();
+    const password = 'correct-horse-battery-staple';
+    const registered = await registerOrganisation({
+      phoneNumber,
+      password,
+      legalName: 'Multi-org Home Org',
+      organisationType: 'voluntary',
+    });
+    const firstIdentity = await me(registered.accessToken);
+
+    const secondOrg = await prisma.provisionOrganisation({
+      legalName: 'Multi-org Second Org',
+      type: 'voluntary',
+      joinCode: `MULTI-${Date.now()}`,
+    });
+    await prisma.withTenant(secondOrg.id, (tx) =>
+      tx.member.create({
+        data: {
+          accountId: firstIdentity.sub,
+          organisationId: secondOrg.id,
+          role: 'MEMBER',
+        },
+      }),
     );
-    expect(disambiguatedIdentity.organisationId).toBe(secondOrg.id);
-    expect(disambiguatedIdentity.role).toBe('MEMBER');
+    createdOrgIds.push(firstIdentity.organisationId, secondOrg.id);
+    createdAccountIds.push(firstIdentity.sub);
+
+    // Set defaultOrganisationId to the second one (where they are MEMBER).
+    await request(app.getHttpServer())
+      .post('/auth/organisations/default')
+      .set('Authorization', `Bearer ${registered.accessToken}`)
+      .send({ organisationId: secondOrg.id })
+      .expect(201);
+
+    // Login now resolves to the second one by default.
+    const res = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ phoneNumber, password })
+      .expect(200);
+
+    const identity = await me((res.body as AccessTokenResponse).accessToken);
+    expect(identity.organisationId).toBe(secondOrg.id);
+    expect(identity.role).toBe('MEMBER');
   });
 
   it('an existing admin can found a second organisation and becomes its admin, independent of the first', async () => {
@@ -609,7 +668,10 @@ describe('Auth (e2e)', () => {
     const secondRes = await request(app.getHttpServer())
       .post('/auth/organisations')
       .set('Authorization', `Bearer ${first.accessToken}`)
-      .send({ legalName: 'Switcher List Second Org', organisationType: 'employer-linked' })
+      .send({
+        legalName: 'Switcher List Second Org',
+        organisationType: 'employer-linked',
+      })
       .expect(201);
     const second = secondRes.body as AccessTokenResponse;
     const secondIdentity = await me(second.accessToken);
@@ -630,13 +692,19 @@ describe('Auth (e2e)', () => {
     const listFromFirst = fromFirstToken.body as OrgListEntry[];
     expect(listFromFirst).toHaveLength(2);
     expect(
-      listFromFirst.find((o) => o.organisationId === firstIdentity.organisationId)?.isCurrent,
+      listFromFirst.find(
+        (o) => o.organisationId === firstIdentity.organisationId,
+      )?.isCurrent,
     ).toBe(true);
     expect(
-      listFromFirst.find((o) => o.organisationId === secondIdentity.organisationId)?.isCurrent,
+      listFromFirst.find(
+        (o) => o.organisationId === secondIdentity.organisationId,
+      )?.isCurrent,
     ).toBe(false);
     expect(
-      listFromFirst.find((o) => o.organisationId === secondIdentity.organisationId)?.legalName,
+      listFromFirst.find(
+        (o) => o.organisationId === secondIdentity.organisationId,
+      )?.legalName,
     ).toBe('Switcher List Second Org');
 
     const fromSecondToken = await request(app.getHttpServer())
@@ -645,7 +713,9 @@ describe('Auth (e2e)', () => {
       .expect(200);
     const listFromSecond = fromSecondToken.body as OrgListEntry[];
     expect(
-      listFromSecond.find((o) => o.organisationId === secondIdentity.organisationId)?.isCurrent,
+      listFromSecond.find(
+        (o) => o.organisationId === secondIdentity.organisationId,
+      )?.isCurrent,
     ).toBe(true);
   });
 
@@ -668,7 +738,10 @@ describe('Auth (e2e)', () => {
     const secondRes = await request(app.getHttpServer())
       .post('/auth/organisations')
       .set('Authorization', `Bearer ${first.accessToken}`)
-      .send({ legalName: 'Switch Target Second Org', organisationType: 'employer-linked' })
+      .send({
+        legalName: 'Switch Target Second Org',
+        organisationType: 'employer-linked',
+      })
       .expect(201);
     const second = secondRes.body as AccessTokenResponse;
     const secondIdentity = await me(second.accessToken);
@@ -717,5 +790,73 @@ describe('Auth (e2e)', () => {
       .post('/auth/organisations/switch')
       .send({ organisationId: identity.organisationId })
       .expect(401);
+  });
+
+  it('looks up organisation and authStrategy by its join code', async () => {
+    const org = await prisma.provisionOrganisation({
+      legalName: 'Lookup Strategy Org',
+      type: 'voluntary',
+      joinCode: `LKPSTR-${Date.now()}`,
+    });
+    createdOrgIds.push(org.id);
+
+    const res = await request(app.getHttpServer())
+      .post('/auth/organisation-by-code')
+      .send({ joinCode: org.joinCode })
+      .expect(200);
+
+    const body = res.body as { legalName: string; authStrategy: string };
+    expect(body.legalName).toBe('Lookup Strategy Org');
+    expect(body.authStrategy).toBe('PASSWORD_ONLY');
+  });
+
+  it('enforces OTP_ONLY strategy during login and join', async () => {
+    const org = await prisma.provisionOrganisation({
+      legalName: 'OTP Only Org',
+      type: 'voluntary',
+      joinCode: `OTPONLY-${Date.now()}`,
+    });
+    createdOrgIds.push(org.id);
+    await prisma.withTenant(org.id, (tx) =>
+      tx.organisation.update({
+        where: { id: org.id },
+        data: { authStrategy: 'OTP_ONLY' },
+      }),
+    );
+
+    const phoneNumber = uniquePhone();
+
+    await request(app.getHttpServer())
+      .post('/auth/join-organisation')
+      .send({
+        phoneNumber,
+        name: 'OTP Joiner',
+        joinCode: org.joinCode,
+        otpCode: 'wrong-otp',
+      })
+      .expect(401);
+
+    const joinRes = await request(app.getHttpServer())
+      .post('/auth/join-organisation')
+      .send({
+        phoneNumber,
+        name: 'OTP Joiner',
+        joinCode: org.joinCode,
+        otpCode: '123456',
+      })
+      .expect(201);
+
+    const token = (joinRes.body as AccessTokenResponse).accessToken;
+    const identity = await me(token);
+    expect(identity.role).toBe('MEMBER');
+    createdAccountIds.push(identity.sub);
+
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        phoneNumber,
+        otpCode: '123456',
+      })
+      .expect(200);
   });
 });

@@ -14,9 +14,10 @@ import {
 } from "@/components/ui/table";
 import { apiFetchOrNull } from "@/lib/api-client";
 import { requireSession } from "@/lib/session";
-import type { Fund, JournalEntry, LedgerAccountBalance, Member, Organisation } from "@welfare/shared-types";
+import type { AuthStrategy, Fund, JournalEntry, LedgerAccountBalance, Member, Organisation } from "@welfare/shared-types";
 import { CreateFundDialog } from "./create-fund-dialog";
 import { PaymentAllocationSetting } from "./payment-allocation-setting";
+import { AuthStrategySetting } from "./auth-strategy-setting";
 import { RecordPaymentDialog } from "./record-payment-dialog";
 import { ReverseEntryDialog } from "./reverse-entry-dialog";
 import { TransferFundsDialog } from "./transfer-funds-dialog";
@@ -84,6 +85,14 @@ export default async function LedgerPage() {
               className="border-white/20 bg-white/5 hover:bg-white/10 hover:text-white text-white font-bold uppercase tracking-widest text-[9px] h-9 px-4 rounded-xl shadow-md transition-all"
               asChild
             >
+              <Link href="/ledger/payouts">Treasury & Payouts</Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-white/20 bg-white/5 hover:bg-white/10 hover:text-white text-white font-bold uppercase tracking-widest text-[9px] h-9 px-4 rounded-xl shadow-md transition-all"
+              asChild
+            >
               <Link href="/ledger/reconciliation">Reconciliation</Link>
             </Button>
             <CreateFundDialog
@@ -103,7 +112,15 @@ export default async function LedgerPage() {
         }
       />
 
-      {organisation && <PaymentAllocationSetting policy={organisation.paymentAllocationPolicy} />}
+      {organisation && (
+        <div className="flex flex-col gap-6 p-6 rounded-xl border border-glass-border bg-glass-card/35 backdrop-blur-md mb-6 dark:bg-glass-card/15">
+          <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Organisation Settings</h3>
+          <div className="flex flex-col md:flex-row gap-6 md:gap-12">
+            <PaymentAllocationSetting policy={organisation.paymentAllocationPolicy} />
+            <AuthStrategySetting strategy={organisation.authStrategy as AuthStrategy} />
+          </div>
+        </div>
+      )}
 
       {!fundsWithBalances ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-16 text-center">

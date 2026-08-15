@@ -16,6 +16,7 @@ import { requireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import type { Notification, NotificationType } from "@welfare/shared-types";
 import { markAllReadAction, markReadAction } from "./actions";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 
 export const metadata: Metadata = {
   title: "Notifications — Welfare Platform",
@@ -68,15 +69,17 @@ export default async function NotificationsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Notifications</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Due-date reminders and claim status updates.</p>
-        </div>
-        {unreadCount > 0 && (
-          <AsyncActionButton label="Mark all read" action={markAllReadAction.bind(null, identity.memberId)} />
-        )}
-      </div>
+      <DashboardHeader
+        title="Notifications"
+        subtitle="Due-date reminders and claim status updates."
+        icon={Bell}
+        theme="indigo"
+        rightAction={
+          unreadCount > 0 ? (
+            <AsyncActionButton label="Mark all read" action={markAllReadAction.bind(null, identity.memberId)} />
+          ) : undefined
+        }
+      />
 
       <div className="flex gap-2">
         <FilterChip href="/notifications" active={!showUnreadOnly}>
@@ -87,7 +90,7 @@ export default async function NotificationsPage({
         </FilterChip>
       </div>
 
-      <Card className="border-border/50 shadow-md">
+      <Card className="border-glass-border bg-glass-card/65 shadow-lg backdrop-blur-md transition-all duration-300 hover:shadow-xl dark:bg-glass-card/45">
         <CardContent>
           {!filtered ? (
             <p className="py-10 text-center text-sm text-muted-foreground">You don&apos;t have access to notifications.</p>

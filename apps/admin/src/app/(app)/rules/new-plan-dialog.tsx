@@ -28,12 +28,16 @@ const INITIAL_STATE: FormActionState = { error: null };
 
 export function NewPlanDialog({ funds }: { funds: Fund[] }) {
   const [open, setOpen] = useState(false);
+  const [computationType, setComputationType] = useState("fixed");
   const [state, formAction, isPending] = useActionState(createContributionPlanAction, INITIAL_STATE);
 
   const [handledState, setHandledState] = useState(state);
   if (state !== handledState) {
     setHandledState(state);
-    if (state.success) setOpen(false);
+    if (state.success) {
+      setOpen(false);
+      setComputationType("fixed");
+    }
   }
 
   return (
@@ -58,6 +62,20 @@ export function NewPlanDialog({ funds }: { funds: Fund[] }) {
             <Input id="plan-name" name="name" placeholder="e.g. Monthly Dues" required />
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="computationType">Plan Type</Label>
+            <Select name="computationType" value={computationType} onValueChange={setComputationType}>
+              <SelectTrigger id="computationType" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fixed">Fixed Amount</SelectItem>
+                <SelectItem value="voluntary">Voluntary / Donation</SelectItem>
+                <SelectItem value="minimum">Minimum Amount</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="cadence">Cadence</Label>
@@ -78,10 +96,14 @@ export function NewPlanDialog({ funds }: { funds: Fund[] }) {
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="amountValue">Amount</Label>
-            <Input id="amountValue" name="amountValue" inputMode="decimal" placeholder="e.g. 20.00" required />
-          </div>
+          {computationType !== "voluntary" && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="amountValue">
+                {computationType === "minimum" ? "Minimum Amount" : "Amount"}
+              </Label>
+              <Input id="amountValue" name="amountValue" inputMode="decimal" placeholder="e.g. 20.00" required />
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="defaultFundId">Default fund (optional)</Label>

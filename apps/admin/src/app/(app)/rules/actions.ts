@@ -50,18 +50,23 @@ export async function createContributionPlanAction(
   formData: FormData,
 ): Promise<FormActionState> {
   const { token } = await requireSession();
+  const computationType = String(formData.get("computationType") ?? "fixed").trim();
+  const rawAmount = String(formData.get("amountValue") ?? "").trim();
+  const amountValue = computationType === "voluntary" ? "0.00" : rawAmount;
+
   const input: CreateContributionPlanInput = {
     name: String(formData.get("name") ?? "").trim(),
     cadence: String(formData.get("cadence") ?? "monthly"),
-    amountValue: String(formData.get("amountValue") ?? "").trim(),
+    amountValue,
     currency: String(formData.get("currency") ?? "GHS").trim(),
+    computationType,
     minTenureMonths: parsedOrUndefined(formData.get("minTenureMonths")),
     goodStandingRequired: formData.get("goodStandingRequired") === "on",
     paymentGracePeriodDays: parsedOrUndefined(formData.get("paymentGracePeriodDays")),
     defaultFundId: String(formData.get("defaultFundId") ?? "").trim() || undefined,
   };
 
-  if (!input.name || !input.amountValue) {
+  if (!input.name || (computationType !== "voluntary" && !input.amountValue)) {
     return { error: "Name and amount are required." };
   }
 

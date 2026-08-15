@@ -18,6 +18,7 @@ class MemberDetail {
     required this.chapterName,
     required this.dependants,
     required this.statusChanges,
+    required this.avatarUrl,
   });
 
   factory MemberDetail.fromJson(Map<String, dynamic> json) {
@@ -30,6 +31,7 @@ class MemberDetail {
       name: account['name'] as String?,
       phoneNumber: account['phoneNumber'] as String,
       chapterName: (json['chapter'] as Map<String, dynamic>?)?['name'] as String?,
+      avatarUrl: account['avatarUrl'] as String?,
       dependants: (json['dependants'] as List)
           .map((e) => Dependant.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -48,4 +50,5 @@ class MemberDetail {
   final String? chapterName;
   final List<Dependant> dependants;
   final List<MemberStatusChange> statusChanges;
+  final String? avatarUrl;
 }

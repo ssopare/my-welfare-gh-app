@@ -5,6 +5,7 @@ class Organisation {
     required this.currency,
     required this.status,
     required this.paymentAllocationPolicy,
+    required this.logoUrl,
   });
 
   factory Organisation.fromJson(Map<String, dynamic> json) => Organisation(
@@ -13,6 +14,7 @@ class Organisation {
         currency: json['currency'] as String,
         status: json['status'] as String,
         paymentAllocationPolicy: json['paymentAllocationPolicy'] as String,
+        logoUrl: json['logoUrl'] as String?,
       );
 
   final String id;
@@ -23,6 +25,7 @@ class Organisation {
   // obligation, oldest-due first) or 'member_selected' (the member picks
   // which open obligations a payment covers). See PayScreen.
   final String paymentAllocationPolicy;
+  final String? logoUrl;
 
   bool get memberSelectsObligations => paymentAllocationPolicy == 'member_selected';
 }

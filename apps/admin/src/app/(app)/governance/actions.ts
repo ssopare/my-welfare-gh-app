@@ -8,6 +8,7 @@ import type {
   CreateGovernanceBodyInput,
   GovernanceBody,
   GovernanceOfficer,
+  ElectionStatus,
 } from "@welfare/shared-types";
 
 export interface FormActionState {
@@ -84,4 +85,103 @@ export async function revokeOfficerAction(assignmentId: string, bodyId: string):
   const { token } = await requireSession();
   await apiFetch(`/role-assignments/${assignmentId}/revoke`, { method: "PATCH", token, body: {} });
   revalidatePath(`/governance/${bodyId}`);
+}
+
+export async function createElectionAction(
+  _prevState: FormActionState,
+  formData: FormData,
+): Promise<FormActionState> {
+  const { token } = await requireSession();
+  
+  const type = String(formData.get("type") ?? "OFFICER") as "OFFICER" | "ISSUE";
+  const isAnonymous = formData.get("isAnonymous") === "true";
+  const requireGoodStanding = formData.get("requireGoodStandingForNominee") === "true";
+  const requireNoArrears = formData.get("requireNoArrearsForNominee") === "true";
+
+  const rawOptions = String(formData.get("options") ?? "").trim();
+  const options = rawOptions ? rawOptions.split(",").map((o) => o.trim()).filter(Boolean) : undefined;
+
+  const rawNomineeMemberIds = String(formData.get("nomineeMemberIds") ?? "").trim();
+  const nomineeMemberIds = rawNomineeMemberIds ? rawNomineeMemberIds.split(",").map((id) => id.trim()).filter(Boolean) : undefined;
+
+  const input = {
+    title: String(formData.get("title") ?? "").trim(),
+    description: String(formData.get("description") ?? "").trim() || undefined,
+    type,
+    isAnonymous,
+    quorumPercentage: Number(formData.get("quorumPercentage") ?? 50.00),
+    passPercentage: Number(formData.get("passPercentage") ?? 50.00),
+    nominationStartsAt: String(formData.get("nominationStartsAt") ?? "").trim() || undefined,
+    nominationEndsAt: String(formData.get("nominationEndsAt") ?? "").trim() || undefined,
+    minNomineeTenureMonths: Number(formData.get("minNomineeTenureMonths") ?? 0),
+    requireGoodStandingForNominee: requireGoodStanding,
+    requireNoArrearsForNominee: requireNoArrears,
+    minSecondersRequired: Number(formData.get("minSecondersRequired") ?? 0),
+    startsAt: String(formData.get("startsAt") ?? ""),
+    endsAt: String(formData.get("endsAt") ?? ""),
+    options,
+    nomineeMemberIds,
+  };
+
+  if (!input.title) {
+    return { error: "A title is required." };
+  }
+  if (!input.startsAt || !input.endsAt) {
+    return { error: "Start and end dates are required." };
+  }
+
+  try {
+    await apiFetch("/elections", { method: "POST", token, body: input });
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : "Something went wrong. Please try again." };
+  }
+
+  revalidatePath("/governance");
+  return { error: null, success: true };
+}
+
+export async function transitionElectionStatusAction(
+  electionId: string,
+  status: ElectionStatus,
+): Promise<FormActionState> {
+  const { token } = await requireSession();
+  try {
+    await apiFetch(`/elections/${electionId}/status`, {
+      method: "PATCH",
+      token,
+      body: { status },
+    });
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : "Something went wrong. Please try again." };
+  }
+
+  revalidatePath("/governance");
+  revalidatePath(`/governance/elections/${electionId}`);
+  return { error: null, success: true };
+}
+
+export async function vetNominationAction(
+  nominationId: string,
+  electionId: string,
+  _prevState: FormActionState,
+  formData: FormData,
+): Promise<FormActionState> {
+  const { token } = await requireSession();
+  const input = {
+    status: String(formData.get("status") ?? "APPROVED") as "APPROVED" | "REJECTED",
+    rejectionReason: String(formData.get("rejectionReason") ?? "").trim() || undefined,
+  };
+
+  try {
+    await apiFetch(`/elections/nominations/${nominationId}/vet`, {
+      method: "POST",
+      token,
+      body: input,
+    });
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : "Something went wrong. Please try again." };
+  }
+
+  revalidatePath(`/governance/elections/${electionId}`);
+  return { error: null, success: true };
 }

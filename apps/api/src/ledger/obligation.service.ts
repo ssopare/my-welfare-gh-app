@@ -300,19 +300,46 @@ export class ObligationService {
       contributionPlanId: string;
     }[] = [];
 
-    const applyToObligation = async (obligation: {
-      id: string;
-      amountValue: Prisma.Decimal;
-      amountPaid: Prisma.Decimal;
-      contributionPlanId: string;
-    }) => {
+    const applyToObligation = async (
+      obligation: {
+        id: string;
+        amountValue: Prisma.Decimal;
+        amountPaid: Prisma.Decimal;
+        contributionPlanId: string;
+      },
+      computationType = 'fixed',
+    ) => {
       if (remaining.lessThanOrEqualTo(0)) return;
-      const outstanding = new Prisma.Decimal(obligation.amountValue).minus(
-        obligation.amountPaid,
-      );
-      if (outstanding.lessThanOrEqualTo(0)) return;
 
-      const applied = Prisma.Decimal.min(remaining, outstanding);
+      let applied: Prisma.Decimal;
+      let newAmountValue: Prisma.Decimal;
+
+      if (computationType === 'voluntary') {
+        applied = remaining;
+        newAmountValue = new Prisma.Decimal(obligation.amountPaid).plus(applied);
+      } else if (computationType === 'minimum') {
+        const outstanding = new Prisma.Decimal(obligation.amountValue).minus(
+          obligation.amountPaid,
+        );
+        if (outstanding.lessThanOrEqualTo(0)) return;
+
+        if (remaining.greaterThan(outstanding)) {
+          applied = remaining;
+          newAmountValue = new Prisma.Decimal(obligation.amountPaid).plus(applied);
+        } else {
+          applied = remaining;
+          newAmountValue = new Prisma.Decimal(obligation.amountValue);
+        }
+      } else {
+        const outstanding = new Prisma.Decimal(obligation.amountValue).minus(
+          obligation.amountPaid,
+        );
+        if (outstanding.lessThanOrEqualTo(0)) return;
+
+        applied = Prisma.Decimal.min(remaining, outstanding);
+        newAmountValue = new Prisma.Decimal(obligation.amountValue);
+      }
+
       allocations.push({
         obligationId: obligation.id,
         amount: applied,
@@ -323,12 +350,11 @@ export class ObligationService {
       const newAmountPaid = new Prisma.Decimal(obligation.amountPaid).plus(
         applied,
       );
-      const fullyPaid = newAmountPaid.greaterThanOrEqualTo(
-        obligation.amountValue,
-      );
+      const fullyPaid = newAmountPaid.greaterThanOrEqualTo(newAmountValue);
       await tx.obligation.update({
         where: { id: obligation.id },
         data: {
+          amountValue: newAmountValue,
           amountPaid: newAmountPaid,
           status: fullyPaid ? 'PAID' : 'PARTIALLY_PAID',
         },
@@ -339,7 +365,10 @@ export class ObligationService {
     // the one part of allocation that's never a choice.
     for (const obligation of monthlyObligations) {
       if (remaining.lessThanOrEqualTo(0)) break;
-      await applyToObligation(obligation);
+      await applyToObligation(
+        obligation,
+        obligation.contributionPlan.computationType,
+      );
     }
 
     // Phase 2: the "pay more than you owe" case — extend forward into
@@ -384,16 +413,15 @@ export class ObligationService {
               organisationId: member.organisationId,
               cadence: 'monthly',
               status: 'ACTIVE',
-              OR: [
-                { chapterId: member.chapterId },
-                { chapterId: null },
-              ],
+              OR: [{ chapterId: member.chapterId }, { chapterId: null }],
             },
             orderBy: { chapterId: 'desc' }, // prioritize chapter-specific plans
           });
           if (fallbackPlan) {
             const today = new Date();
-            const startOfMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+            const startOfMonth = new Date(
+              Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1),
+            );
             anchor = {
               id: '',
               organisationId: member.organisationId,
@@ -406,7 +434,7 @@ export class ObligationService {
               status: 'DUE',
               createdAt: today,
               contributionPlan: fallbackPlan,
-            } as any;
+            } as unknown as typeof anchor;
           }
         }
       }
@@ -469,7 +497,10 @@ export class ObligationService {
     // member_selected.
     for (const obligation of otherObligationsToAllocate) {
       if (remaining.lessThanOrEqualTo(0)) break;
-      await applyToObligation(obligation);
+      await applyToObligation(
+        obligation,
+        obligation.contributionPlan.computationType,
+      );
     }
 
     // Whatever's left either becomes (or clears) the member's credit
@@ -498,6 +529,32 @@ export class ObligationService {
       throw new BadRequestException(
         `Payment of ${dto.amountValue} exceeds ${scope} by ${remaining.toString()}`,
       );
+    }
+
+    // Deduct transaction fees (1.95% for Paystack, 0% for mock sandbox)
+    const isPaystack = process.env.PAYMENT_PROVIDER === 'paystack';
+    const feePercent = isPaystack ? 0.0195 : 0;
+    const totalAmount = new Prisma.Decimal(dto.amountValue);
+    const feeAmount = totalAmount.times(feePercent).toDecimalPlaces(2);
+    const netAmount = totalAmount.minus(feeAmount);
+
+    let feeAccountId: string | null = null;
+    if (feeAmount.greaterThan(0)) {
+      const existing = await tx.ledgerAccount.findFirst({
+        where: { fundId: dto.fundId, name: 'Payment Provider Fees' },
+      });
+      feeAccountId = existing
+        ? existing.id
+        : (
+            await tx.ledgerAccount.create({
+              data: {
+                organisationId,
+                fundId: dto.fundId,
+                name: 'Payment Provider Fees',
+                type: 'EXPENSE',
+              },
+            })
+          ).id;
     }
 
     // Credit balance is a real liability, not just a number on Member —
@@ -542,9 +599,18 @@ export class ObligationService {
         lines: [
           {
             ledgerAccountId: cashAccount.id,
-            debit: dto.amountValue,
+            debit: netAmount.toString(),
             memberId: dto.memberId,
           },
+          ...(feeAccountId && feeAmount.greaterThan(0)
+            ? [
+                {
+                  ledgerAccountId: feeAccountId,
+                  debit: feeAmount.toString(),
+                  memberId: dto.memberId,
+                },
+              ]
+            : []),
           ...allocations.map((allocation) => ({
             ledgerAccountId: incomeAccount.id,
             credit: allocation.amount.toString(),

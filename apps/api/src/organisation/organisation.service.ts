@@ -47,6 +47,8 @@ export class OrganisationService {
         where: { id: actor.organisationId },
         data: {
           paymentAllocationPolicy: dto.paymentAllocationPolicy,
+          authStrategy: dto.authStrategy,
+          logoUrl: dto.logoUrl !== undefined ? dto.logoUrl : undefined,
         },
       }),
     );

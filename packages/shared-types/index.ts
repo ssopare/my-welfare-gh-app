@@ -30,6 +30,7 @@ export interface MyOrganisationMembership {
   role: "ADMIN" | "MEMBER";
   status: string;
   isCurrent: boolean;
+  isDefault?: boolean;
 }
 
 export interface LoginInput {
@@ -44,8 +45,11 @@ export interface RegisterOrganisationInput {
   legalName: string;
   organisationType: string;
   // Account-level identity (not per-membership) — carries through every
-  // org this Account later joins. See the schema comment on Account.name.
-  name: string;
+  // org this Account later joins. Only required when phoneNumber has no
+  // existing Account yet; founding another org under one that already
+  // exists (password verified) reuses its name from before. See
+  // RegisterOrganisationDto and AuthService.registerOrganisation.
+  name?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,14 +63,18 @@ export interface Organisation {
   country: string;
   currency: string;
   status: string;
+  logoUrl?: string | null;
   paymentAllocationPolicy: string;
   makerCheckerEnabled: boolean;
+  authStrategy: string;
   // Short, human-shareable alternative to `id` for joining — see the
   // organisation_join_code migration. What an admin should actually hand
   // out to prospective members, not the raw UUID.
   joinCode: string;
   createdAt: string;
 }
+
+export type AuthStrategy = "PASSWORD_ONLY" | "OTP_ONLY" | "PASSWORD_AND_OTP";
 
 // ---------------------------------------------------------------------------
 // Membership
@@ -159,7 +167,7 @@ export interface Member {
   joinDate: string;
   status: MemberStatus;
   createdAt: string;
-  account: { phoneNumber: string; name: string | null };
+  account: { phoneNumber: string; name: string | null; avatarUrl?: string | null };
   chapter: Chapter | null;
   // What a monthly-plan overpayment beyond every month it could generate
   // (24-month safety cap) parks itself as, ready to be swept into this
@@ -860,6 +868,103 @@ export interface GovernanceOfficer {
   member: Member;
 }
 
+export type ElectionType = "OFFICER" | "ISSUE";
+
+export type ElectionStatus =
+  | "DRAFT"
+  | "NOMINATION"
+  | "VETTING"
+  | "ACTIVE"
+  | "COMPLETED"
+  | "CANCELLED";
+
+export type NominationStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface Election {
+  id: string;
+  organisationId: string;
+  title: string;
+  description: string | null;
+  type: ElectionType;
+  status: ElectionStatus;
+  isAnonymous: boolean;
+  quorumPercentage: number;
+  passPercentage: number;
+  nominationStartsAt: string | null;
+  nominationEndsAt: string | null;
+  minNomineeTenureMonths: number;
+  requireGoodStandingForNominee: boolean;
+  requireNoArrearsForNominee: boolean;
+  minSecondersRequired: number;
+  startsAt: string;
+  endsAt: string;
+  createdAt: string;
+  
+  nominations?: Nomination[];
+  nominees?: Nominee[];
+  options?: IssueOption[];
+}
+
+export interface Nomination {
+  id: string;
+  electionId: string;
+  nomineeMemberId: string;
+  nominatorId: string;
+  statement: string | null;
+  status: NominationStatus;
+  rejectionReason: string | null;
+  seconders: string[];
+  createdAt: string;
+}
+
+export interface Nominee {
+  id: string;
+  electionId: string;
+  memberId: string;
+  bio: string | null;
+  manifesto: string | null;
+}
+
+export interface IssueOption {
+  id: string;
+  electionId: string;
+  text: string;
+}
+
+export interface VoterRegistry {
+  id: string;
+  electionId: string;
+  memberId: string;
+  votedAt: string;
+}
+
+export interface PublicBallot {
+  id: string;
+  electionId: string;
+  memberId: string;
+  nomineeId: string | null;
+  issueOptionId: string | null;
+}
+
+export interface AnonymousBallot {
+  id: string;
+  electionId: string;
+  nomineeId: string | null;
+  issueOptionId: string | null;
+}
+
+export interface ElectionResultsResponse {
+  electionId: string;
+  title: string;
+  status: ElectionStatus;
+  totalEligible: number;
+  totalVotesCast: number;
+  turnoutPercentage: number;
+  quorumPercentage: number;
+  quorumMet: boolean;
+  results: { optionId: string; label: string; count: number }[];
+}
+
 // ---------------------------------------------------------------------------
 // Notifications
 // ---------------------------------------------------------------------------
@@ -1084,4 +1189,107 @@ export interface CreateSubscriptionPlanInput {
 export interface UpdateSubscriptionStatusInput {
   status: SubscriptionStatus;
   currentPeriodEnd?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Treasury & Payout Routing
+// ---------------------------------------------------------------------------
+
+export interface SettlementAccount {
+  id: string;
+  organisationId: string;
+  providerSubaccountCode: string;
+  bankName: string;
+  accountNumber: string;
+  verified: boolean;
+  createdAt: string;
+}
+
+export interface PayoutRecipient {
+  id: string;
+  organisationId: string;
+  name: string;
+  type: string;
+  accountNumber: string;
+  bankCode: string;
+  isAllowlisted: boolean;
+  createdAt: string;
+}
+
+export interface PayoutRequest {
+  id: string;
+  organisationId: string;
+  amountValue: string;
+  currency: string;
+  fundId: string;
+  recipientId: string;
+  purpose: string;
+  status: string;
+  requesterId: string;
+  createdAt: string;
+  completedAt: string | null;
+  recipient?: PayoutRecipient;
+  approvals?: PayoutApproval[];
+}
+
+export interface PayoutApproval {
+  id: string;
+  payoutRequestId: string;
+  officerId: string;
+  decision: string;
+  comment: string | null;
+  createdAt: string;
+}
+
+export interface FundControlPolicy {
+  id: string;
+  organisationId: string;
+  dailyLimitValue: string;
+  monthlyLimitValue: string;
+  thresholdOneApproverValue: string;
+  thresholdTwoApproversValue: string;
+}
+
+export interface ReconciliationRecord {
+  id: string;
+  organisationId: string;
+  providerReference: string;
+  ledgerAmountValue: string;
+  settlementAmountValue: string;
+  feeAmountValue: string;
+  matched: boolean;
+  flaggedReason: string | null;
+  createdAt: string;
+}
+
+export interface CreateSettlementAccountInput {
+  bankName: string;
+  accountNumber: string;
+}
+
+export interface CreatePayoutRecipientInput {
+  name: string;
+  type: string;
+  accountNumber: string;
+  bankCode: string;
+}
+
+export interface CreatePayoutRequestInput {
+  amountValue: string;
+  currency?: string;
+  fundId: string;
+  recipientId: string;
+  purpose: string;
+}
+
+export interface SubmitPayoutApprovalInput {
+  decision: "APPROVED" | "REJECTED";
+  comment?: string;
+}
+
+export interface UpdateFundControlPolicyInput {
+  dailyLimitValue: string;
+  monthlyLimitValue: string;
+  thresholdOneApproverValue: string;
+  thresholdTwoApproversValue: string;
 }

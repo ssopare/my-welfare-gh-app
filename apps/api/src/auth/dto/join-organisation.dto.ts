@@ -14,9 +14,14 @@ export class JoinOrganisationDto {
   @MinLength(6)
   phoneNumber!: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(8)
-  password!: string;
+  password?: string;
+
+  @IsOptional()
+  @IsString()
+  otpCode?: string;
 
   // Only meaningful (and required — see AuthService.joinOrganisation)
   // when this phone number has no existing Account yet. An existing

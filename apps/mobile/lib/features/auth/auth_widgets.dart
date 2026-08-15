@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_colors.dart';
-
-/// Shared "labeled glass field" used across every auth screen (login,
-/// join, create-organisation) so they read as one consistent system
-/// rather than each screen inventing its own input chrome.
+/// Shared "labeled glass field" redesigned to mimic WhatsApp's sleek,
+/// high-fidelity flat chat-bubble input fields.
 class AuthInputCard extends StatelessWidget {
-  const AuthInputCard({super.key, required this.label, required this.child, required this.isDark});
+  const AuthInputCard({
+    super.key,
+    required this.label,
+    required this.child,
+    required this.isDark,
+  });
 
   final String label;
   final Widget child;
@@ -15,21 +17,29 @@ class AuthInputCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E2132) : const Color(0xFFF7F6FB),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: isDark ? const Color(0xFF2E334D) : const Color(0xFFE7E4F6)),
+        color: isDark ? const Color(0xFF131A22) : const Color(0xFFF0F2F5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? const Color(0xFF232D36) : const Color(0xFFE1E5EA),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: TextStyle(
-                fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.6,
-                color: isDark ? AppColors.mutedForegroundDark : AppColors.mutedForegroundLight,
-              )),
-          const SizedBox(height: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.6,
+              color: isDark ? const Color(0xFF00A884) : const Color(0xFF008069),
+            ),
+          ),
+          const SizedBox(height: 4),
           child,
         ],
       ),
@@ -37,9 +47,14 @@ class AuthInputCard extends StatelessWidget {
   }
 }
 
-/// The gradient "Login"/primary submit button shared across auth screens.
+/// The WhatsApp-style flat solid action button shared across screens.
 class AuthPrimaryButton extends StatelessWidget {
-  const AuthPrimaryButton({super.key, required this.label, required this.isLoading, required this.onPressed});
+  const AuthPrimaryButton({
+    super.key,
+    required this.label,
+    required this.isLoading,
+    required this.onPressed,
+  });
 
   final String label;
   final bool isLoading;
@@ -47,22 +62,48 @@ class AuthPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = isDark ? const Color(0xFF00A884) : const Color(0xFF008069);
+
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF8F6EFF), Color(0xFF5B48FA)]),
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(color: const Color(0xFF5B48FA).withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
+        color: primaryColor,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: isLoading ? null : onPressed,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(24),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 15),
+            padding: const EdgeInsets.symmetric(vertical: 14),
             child: isLoading
-                ? const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))
-                : Text(label, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                ? const Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                    ),
+                  )
+                : Center(
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: Colors.white,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
           ),
         ),
       ),

@@ -1,4 +1,4 @@
-import { IsIn, IsOptional } from 'class-validator';
+import { IsIn, IsOptional, IsString } from 'class-validator';
 
 // Only the policy values ObligationService actually implements are
 // accepted here — 'oldest_first' (the default) and 'member_selected'.
@@ -15,4 +15,12 @@ export class UpdateOrganisationSettingsDto {
   @IsOptional()
   @IsIn(IMPLEMENTED_PAYMENT_ALLOCATION_POLICIES)
   paymentAllocationPolicy?: (typeof IMPLEMENTED_PAYMENT_ALLOCATION_POLICIES)[number];
+
+  @IsOptional()
+  @IsIn(['PASSWORD_ONLY', 'OTP_ONLY', 'PASSWORD_AND_OTP'])
+  authStrategy?: 'PASSWORD_ONLY' | 'OTP_ONLY' | 'PASSWORD_AND_OTP';
+
+  @IsOptional()
+  @IsString()
+  logoUrl?: string;
 }

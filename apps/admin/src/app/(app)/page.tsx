@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { HeartPulse, PiggyBank, TrendingUp, Users } from "lucide-react";
+import { HeartPulse, LayoutDashboard, PiggyBank, TrendingUp, Users } from "lucide-react";
 import { AttentionTiles } from "@/components/dashboard/attention-tiles";
 import { ContributionsVsClaimsChart, type ContributionsVsClaimsChartRow } from "@/components/dashboard/contributions-vs-claims-chart";
 import { DashboardPeriodFilter } from "@/components/dashboard/dashboard-period-filter";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { JoinCodeWidget } from "@/components/dashboard/join-code-card";
 import { FundTrendChart, type FundTrendRow } from "@/components/dashboard/fund-trend-chart";
-import { JoinCodeCard } from "@/components/dashboard/join-code-card";
 import { FinancialMetric } from "@/components/finance/financial-metric";
 import { MoneyDisplay } from "@/components/finance/money-display";
 import { StatusBadge, type StatusTone } from "@/components/finance/status-badge";
@@ -169,15 +170,19 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Overview dashboard</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Real-time overview of your welfare fund.</p>
-        </div>
-        <DashboardPeriodFilter value={period.value} rangeLabel={period.label} />
-      </div>
-
-      {organisation && <JoinCodeCard joinCode={organisation.joinCode} legalName={organisation.legalName} />}
+      <DashboardHeader
+        title="Overview dashboard"
+        subtitle="Real-time overview of your welfare fund."
+        icon={LayoutDashboard}
+        watermarkIcon={TrendingUp}
+        theme="indigo"
+        rightAction={
+          <div className="flex flex-wrap items-center gap-3">
+            {organisation && <JoinCodeWidget joinCode={organisation.joinCode} />}
+            <DashboardPeriodFilter value={period.value} rangeLabel={period.label} />
+          </div>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <FinancialMetric

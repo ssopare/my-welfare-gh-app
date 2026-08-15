@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/models/auth_identity.dart';
+import '../../core/models/my_organisation_membership.dart';
 import '../../core/providers.dart';
 import 'auth_repository.dart';
 
@@ -55,9 +56,9 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  Future<bool> completeProfile(String name) async {
+  Future<bool> completeProfile(String name, {String? avatarUrl}) async {
     try {
-      await _repository.updateOwnName(name);
+      await _repository.updateOwnProfile(name, avatarUrl: avatarUrl);
       needsProfileCompletion = false;
       notifyListeners();
       return true;
@@ -102,6 +103,27 @@ class AuthController extends ChangeNotifier {
 
   Future<bool> joinAdditionalOrganisation({required String joinCode}) =>
       _attempt(() => _repository.joinAdditionalOrganisation(joinCode: joinCode));
+
+  // Side-effect free like checkPhoneExists — doesn't touch `identity`, so
+  // the switcher screen owns its own loading/error state around this call
+  // rather than going through _attempt/lastError.
+  Future<List<MyOrganisationMembership>> listMyOrganisations() =>
+      _repository.listMyOrganisations();
+
+  // Goes through _attempt like every other call that replaces `identity`
+  // — switching orgs changes memberId/role/organisationId all at once, so
+  // the rest of the app (home, profile, claims) needs to refetch against
+  // the new scope exactly like a fresh login would.
+  Future<bool> switchOrganisation({required String organisationId}) =>
+      _attempt(() => _repository.switchOrganisation(organisationId: organisationId));
+
+  Future<bool> createAdditionalOrganisation({
+    required String legalName,
+    required String organisationType,
+  }) => _attempt(() => _repository.createAdditionalOrganisation(
+        legalName: legalName,
+        organisationType: organisationType,
+      ));
 
   Future<bool> registerOrganisation({
     required String legalName,

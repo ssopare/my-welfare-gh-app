@@ -51,11 +51,11 @@ export class RuleEngineService {
       if (plan.status !== 'ACTIVE') {
         throw new BadRequestException('Contribution plan is not active');
       }
-      if (plan.computationType !== 'fixed') {
-        // Phase 1 scope: only fixed amounts are evidenced as needed by the
-        // source constitutions' worked examples (§11.2/11.3). Fail loudly
-        // rather than silently compute the wrong number for a
-        // computationType nothing has implemented yet.
+      if (
+        plan.computationType !== 'fixed' &&
+        plan.computationType !== 'voluntary' &&
+        plan.computationType !== 'minimum'
+      ) {
         throw new NotImplementedException(
           `computationType "${plan.computationType}" is not yet implemented`,
         );
@@ -89,11 +89,12 @@ export class RuleEngineService {
         );
       }
 
+      const amount = plan.computationType === 'voluntary' ? '0.00' : plan.amountValue.toString();
       return {
         planId: plan.id,
         memberId,
         periodDate,
-        amount: plan.amountValue.toString(),
+        amount,
         currency: plan.currency,
       };
     });

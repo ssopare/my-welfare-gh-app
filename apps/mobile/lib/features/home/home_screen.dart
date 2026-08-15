@@ -9,6 +9,7 @@ import '../auth/auth_controller.dart';
 import '../payments/pay_screen.dart';
 import '../claims/claims_screen.dart';
 import '../claims/new_claim_screen.dart';
+import '../voting/elections_list_screen.dart';
 import 'home_repository.dart';
 
 /// The high-fidelity member home dashboard screen matching the mockup designs.
@@ -406,65 +407,87 @@ class _HomeContent extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 12),
-        Row(
+        Column(
           children: [
-            Expanded(
-              child: _QuickActionCard(
-                label: 'File Claim',
-                subtitle: 'Submit new request',
-                icon: Icons.description_outlined,
-                iconColor: Colors.blue,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const NewClaimScreen()),
-                  );
-                },
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: _QuickActionCard(
+                    label: 'File Claim',
+                    subtitle: 'Submit new request',
+                    icon: Icons.description_outlined,
+                    iconColor: Colors.blue,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const NewClaimScreen()),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _QuickActionCard(
+                    label: 'Statement',
+                    subtitle: 'View history',
+                    icon: Icons.assignment_outlined,
+                    iconColor: Colors.orange,
+                    onTap: () {
+                      if (data.totalOutstanding > 0) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => PayScreen(
+                              suggestedAmount: data.totalOutstanding,
+                              currency: data.organisation.currency,
+                              organisation: data.organisation,
+                              openObligations: data.openObligations,
+                            ),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('No outstanding payments due.')),
+                        );
+                      }
+                    },
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _QuickActionCard(
-                label: 'Statement',
-                subtitle: 'View history',
-                icon: Icons.assignment_outlined,
-                iconColor: Colors.orange,
-                onTap: () {
-                  if (data.totalOutstanding > 0) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => PayScreen(
-                          suggestedAmount: data.totalOutstanding,
-                          currency: data.organisation.currency,
-                          organisation: data.organisation,
-                          openObligations: data.openObligations,
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _QuickActionCard(
+                    label: 'Dependants',
+                    subtitle: 'Manage family',
+                    icon: Icons.people_outline,
+                    iconColor: Colors.purple,
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'You have ${data.profile.dependantCount} registered dependant(s).',
+                          ),
                         ),
-                      ),
-                    );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('No outstanding payments due.')),
-                    );
-                  }
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _QuickActionCard(
-                label: 'Dependants',
-                subtitle: 'Manage family',
-                icon: Icons.people_outline,
-                iconColor: Colors.purple,
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'You have ${data.profile.dependantCount} registered dependant(s).',
-                      ),
-                    ),
-                  );
-                },
-              ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _QuickActionCard(
+                    label: 'Voting & Polls',
+                    subtitle: 'Cast your ballot',
+                    icon: Icons.how_to_vote_outlined,
+                    iconColor: Colors.teal,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const ElectionsListScreen()),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
         ),

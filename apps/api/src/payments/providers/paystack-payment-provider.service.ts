@@ -104,11 +104,16 @@ export class PaystackPaymentProvider implements PaymentProvider {
           amount: amountInPesewas,
           currency: params.currency,
           mobile_money: {
-            phone: process.env.PAYSTACK_SECRET_KEY?.toLowerCase().includes('test') ? '0551234567' : params.phoneNumber.replace(/[-\s()]/g, ""),
+            phone: process.env.PAYSTACK_SECRET_KEY?.toLowerCase().includes(
+              'test',
+            )
+              ? '0551234567'
+              : params.phoneNumber.replace(/[-\s()]/g, ''),
             provider: params.momoProvider,
           },
           reference: params.metadata.reference,
           metadata: { organisationId: params.metadata.organisationId },
+          ...(params.subaccount ? { subaccount: params.subaccount } : {}),
         }),
       });
     } catch {

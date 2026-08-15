@@ -3,7 +3,9 @@ import { AuthModule } from '../auth/auth.module';
 import { LedgerModule } from '../ledger/ledger.module';
 import { RbacModule } from '../rbac/rbac.module';
 import { PaymentController } from './payment.controller';
+import { PayoutController } from './payout.controller';
 import { PaymentService } from './payment.service';
+import { PayoutService } from './payout.service';
 import { MockPaymentProvider } from './providers/mock-payment-provider.service';
 import { PAYMENT_PROVIDER } from './providers/payment-provider.interface';
 import { PaystackPaymentProvider } from './providers/paystack-payment-provider.service';
@@ -14,9 +16,10 @@ import { PaystackPaymentProvider } from './providers/paystack-payment-provider.s
 // fail-fast-at-load pattern AuthModule uses for JWT_SECRET).
 @Module({
   imports: [AuthModule, LedgerModule, RbacModule],
-  controllers: [PaymentController],
+  controllers: [PaymentController, PayoutController],
   providers: [
     PaymentService,
+    PayoutService,
     {
       provide: PAYMENT_PROVIDER,
       useFactory: () =>
@@ -25,5 +28,6 @@ import { PaystackPaymentProvider } from './providers/paystack-payment-provider.s
           : new MockPaymentProvider(),
     },
   ],
+  exports: [PayoutService],
 })
 export class PaymentsModule {}

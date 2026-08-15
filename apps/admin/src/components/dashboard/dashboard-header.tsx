@@ -1,12 +1,12 @@
-import React, { type ReactNode } from "react";
+import React, { type ComponentType, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export interface DashboardHeaderProps {
   title: string;
   subtitle?: string;
   highlightedText?: string;
-  icon: any; // Lucide icon
-  watermarkIcon?: any; // Lucide icon
+  icon: ComponentType<{ className?: string }>; // Lucide icon
+  watermarkIcon?: ComponentType<{ className?: string }>; // Lucide icon
   theme?: "crimson" | "indigo" | "emerald" | "amber" | "blue";
   badgeText?: string;
   rightAction?: ReactNode;
@@ -92,7 +92,7 @@ export function DashboardHeader({
       </div>
 
       {rightAction && (
-        <div className="z-10 shrink-0 w-full md:w-auto">
+        <div className="z-10 shrink-0 w-full md:w-auto [&_button]:bg-white [&_button]:text-slate-950 [&_button:hover]:bg-white/90 [&_button]:border-transparent [&_button]:shadow-sm [&_button_svg]:text-slate-950">
           {rightAction}
         </div>
       )}

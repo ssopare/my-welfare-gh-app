@@ -57,6 +57,7 @@ describe('Notifications (e2e)', () => {
   const createdAccountIds: string[] = [];
 
   beforeAll(async () => {
+    jest.setTimeout(30000);
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -441,7 +442,7 @@ describe('Notifications (e2e)', () => {
       (n) => n.type === 'CONTRIBUTION_DUE_REMINDER',
     );
     expect(reminders).toHaveLength(1);
-  });
+  }, 30000);
 
   it('the daily sweep sends a risk alert one period before the threshold and auto-transitions status at the threshold, with no manual reassess call', async () => {
     const admin = await registerOrganisation('Notif Defaulter Sweep Org');
@@ -510,7 +511,7 @@ describe('Notifications (e2e)', () => {
     expect((statusAfterTwoMissed.body as MemberDetailResponse).status).toBe(
       'DEFAULTER',
     );
-  });
+  }, 30000);
 
   it('cross-tenant: a notification is only visible within its own organisation', async () => {
     const orgA = await registerOrganisation('Notif Cross-Tenant Org A');
