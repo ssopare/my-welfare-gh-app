@@ -13,21 +13,17 @@ import {
 import type { AuthStrategy } from "@welfare/shared-types";
 import { updateAuthStrategyAction } from "./actions";
 
+// SMS OTP options are intentionally not offered here — they were never
+// wired to a real SMS provider, just a hardcoded universal code any
+// account could be accessed with. Re-add once real SMS delivery exists;
+// see AuthService.effectiveAuthStrategy and
+// UpdateOrganisationSettingsDto.authStrategy on the API side, which
+// reject anything but PASSWORD_ONLY regardless of what this form sends.
 const OPTIONS: { value: AuthStrategy; label: string; description: string }[] = [
   {
     value: "PASSWORD_ONLY",
-    label: "Password Only (default)",
+    label: "Password Only",
     description: "Members sign in and join using their account phone number and password.",
-  },
-  {
-    value: "OTP_ONLY",
-    label: "SMS OTP Only (Passwordless)",
-    description: "Ideal for low-literacy groups. Members enter their phone number and verify via SMS/WhatsApp code.",
-  },
-  {
-    value: "PASSWORD_AND_OTP",
-    label: "Password + SMS OTP (2FA)",
-    description: "High security. Members must enter their password and verify via SMS code to log in or join.",
   },
 ];
 

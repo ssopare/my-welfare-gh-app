@@ -65,18 +65,16 @@ export async function checkPhoneAction(phoneNumber: string): Promise<{ exists: b
   });
 }
 
-export async function getOrganisationByCodeAction(joinCode: string): Promise<{ id: string; legalName: string; authStrategy: string }> {
-  return apiFetch<{ id: string; legalName: string; authStrategy: string }>("/auth/organisation-by-code", {
-    method: "POST",
-    body: { joinCode },
-  });
-}
-
 // The member-facing counterpart to registerAction above — joining an
 // *existing* organisation with a join code, rather than founding a new
 // one. Previously only available from the mobile app (see the doc
 // comment history on JoinScreen); exposed here too now that onboarding
 // presents both paths as an explicit choice on every platform.
+//
+// No organisation-by-code / authStrategy lookup here anymore — every org
+// is PASSWORD_ONLY now regardless of what's stored (OTP was never wired
+// to a real SMS provider; see AuthService.effectiveAuthStrategy on the
+// API side), so a password is always what's required, full stop.
 export async function joinAction(
   _prevState: JoinFormState,
   formData: FormData,
@@ -85,37 +83,12 @@ export async function joinAction(
   const name = String(formData.get("name") ?? "").trim();
   const phoneNumber = String(formData.get("phoneNumber") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const otpCode = String(formData.get("otpCode") ?? "").trim();
 
-  if (!joinCode || !phoneNumber) {
+  if (!joinCode || !phoneNumber || !password) {
     return { error: "Please fill in every field." };
   }
-
-  // Lookup the organisation strategy first
-  let strategy = "PASSWORD_ONLY";
-  try {
-    const org = await apiFetch<{ authStrategy: string }>("/auth/organisation-by-code", {
-      method: "POST",
-      body: { joinCode },
-    });
-    strategy = org.authStrategy;
-  } catch (error) {
-    return { error: "Invalid join code." };
-  }
-
-  if (strategy === "PASSWORD_ONLY" || strategy === "PASSWORD_AND_OTP") {
-    if (!password) {
-      return { error: "Please enter your password." };
-    }
-    if (password.length < 8) {
-      return { error: "Password must be at least 8 characters." };
-    }
-  }
-
-  if (strategy === "OTP_ONLY" || strategy === "PASSWORD_AND_OTP") {
-    if (!otpCode) {
-      return { error: "Please enter the SMS OTP code." };
-    }
+  if (password.length < 8) {
+    return { error: "Password must be at least 8 characters." };
   }
 
   try {
@@ -123,13 +96,7 @@ export async function joinAction(
       "/auth/join-organisation",
       {
         method: "POST",
-        body: {
-          joinCode,
-          name,
-          phoneNumber,
-          password: (strategy === "PASSWORD_ONLY" || strategy === "PASSWORD_AND_OTP") ? password : undefined,
-          otpCode: (strategy === "OTP_ONLY" || strategy === "PASSWORD_AND_OTP") ? otpCode : undefined,
-        },
+        body: { joinCode, name, phoneNumber, password },
       },
     );
     await setSessionCookie(accessToken);

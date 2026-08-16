@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { AuthStrategy, Prisma } from '../../generated/prisma/client';
+import { Prisma } from '../../generated/prisma/client';
 import { NotificationService } from '../notifications/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
@@ -278,7 +278,23 @@ export class AuthService {
     if (!organisation) {
       throw new NotFoundException('Invalid join code');
     }
-    return organisation;
+    // See EFFECTIVE_AUTH_STRATEGY's own comment — report the strategy
+    // that's actually enforced, not whatever an org has stored, so a
+    // client never renders an OTP field that would then be rejected.
+    return { ...organisation, authStrategy: this.effectiveAuthStrategy() };
+  }
+
+  // OTP_ONLY/PASSWORD_AND_OTP are disabled everywhere, regardless of what
+  // an organisation has stored — the "OTP" verification below was never
+  // wired to a real SMS provider, just a hardcoded '123456' universal
+  // code, which meant anyone who knew it could log in or join as *any*
+  // account under an org that had picked either strategy, including
+  // OTP_ONLY where no password is checked at all. Re-enable once a real
+  // SMS provider is actually integrated; until then every read of
+  // authStrategy for auth purposes goes through here instead of trusting
+  // the stored column directly.
+  private effectiveAuthStrategy(): 'PASSWORD_ONLY' {
+    return 'PASSWORD_ONLY';
   }
 
   private async verifyAuthCredentials(
@@ -321,13 +337,7 @@ export class AuthService {
   async joinOrganisation(dto: JoinOrganisationDto) {
     const organisationId = await this.resolveOrganisationId(dto);
 
-    const organisation = await this.prisma.withJoinCodeLookupContext((tx) =>
-      tx.organisation.findUnique({
-        where: { id: organisationId },
-        select: { authStrategy: true },
-      }),
-    );
-    const strategy = organisation?.authStrategy ?? AuthStrategy.PASSWORD_ONLY;
+    const strategy = this.effectiveAuthStrategy();
 
     let account = await this.prisma.account.findUnique({
       where: { phoneNumber: dto.phoneNumber },
@@ -336,28 +346,22 @@ export class AuthService {
     if (account) {
       await this.verifyAuthCredentials(strategy, dto, account.passwordHash);
     } else {
-      if (strategy === 'PASSWORD_ONLY' || strategy === 'PASSWORD_AND_OTP') {
-        if (!dto.password) {
-          throw new BadRequestException(
-            'Password is required to create a new account',
-          );
-        }
+      // strategy is always 'PASSWORD_ONLY' (effectiveAuthStrategy) — a new
+      // account always needs a real password now; the OTP-in-lieu-of-
+      // password branch this used to have was the same disabled bypass as
+      // everywhere else and is gone, not just unreachable.
+      if (!dto.password) {
+        throw new BadRequestException(
+          'Password is required to create a new account',
+        );
       }
-      if (strategy === 'OTP_ONLY' || strategy === 'PASSWORD_AND_OTP') {
-        if (dto.otpCode !== '123456') {
-          throw new UnauthorizedException('Invalid SMS OTP code');
-        }
-      }
-
       if (!dto.name) {
         throw new BadRequestException(
           'A name is required to create a new account',
         );
       }
-      const passwordToHash =
-        dto.password || Math.random().toString(36).slice(-10);
       const passwordHash = await bcrypt.hash(
-        passwordToHash,
+        dto.password,
         PASSWORD_SALT_ROUNDS,
       );
       account = await this.prisma.account.create({
@@ -549,9 +553,11 @@ export class AuthService {
       tx.member.findMany({ where: { accountId: account.id } }),
     );
     if (memberships.length === 0) {
-      throw new UnauthorizedException(
-        'This account has no organisation memberships',
-      );
+      // Same generic message as the !account branch above, deliberately
+      // — a distinguishing message here would let anyone learn whether a
+      // given phone number has an Account at all (account enumeration),
+      // without ever needing the correct password.
+      throw new UnauthorizedException('Invalid phone number or password');
     }
 
     let targetOrgId = dto.organisationId;
@@ -587,13 +593,7 @@ export class AuthService {
       }
     }
 
-    const organisation = await this.prisma.withTenant(targetOrgId, (tx) =>
-      tx.organisation.findUnique({
-        where: { id: targetOrgId },
-        select: { authStrategy: true },
-      }),
-    );
-    const strategy = organisation?.authStrategy ?? AuthStrategy.PASSWORD_ONLY;
+    const strategy = this.effectiveAuthStrategy();
 
     await this.verifyAuthCredentials(strategy, dto, account.passwordHash);
 

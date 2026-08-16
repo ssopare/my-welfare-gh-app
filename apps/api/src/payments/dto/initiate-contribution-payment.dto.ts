@@ -4,9 +4,7 @@ import {
   IsIn,
   IsNumberString,
   IsOptional,
-  IsString,
   IsUUID,
-  MinLength,
 } from 'class-validator';
 
 export class InitiateContributionPaymentDto {
@@ -19,8 +17,12 @@ export class InitiateContributionPaymentDto {
   @IsNumberString()
   amountValue!: string;
 
-  @IsString()
-  @MinLength(3)
+  // Ghana-only for v1 (a locked platform decision) — every ledger amount
+  // in this schema is stored as a free-form string with no currency
+  // conversion logic anywhere downstream, so accepting anything other
+  // than the one currency the ledger actually understands would silently
+  // record e.g. "25 USD" as if it were 25 GHS.
+  @IsIn(['GHS'])
   currency!: string;
 
   @IsIn(['MOBILE_MONEY', 'CARD', 'BANK_TRANSFER'])

@@ -10,7 +10,7 @@ import {
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { requireAdmin } from '../common/access.util';
+import { requireAdmin, requirePermission } from '../common/access.util';
 import { RbacService } from '../rbac/rbac.service';
 import { ReverseJournalEntryDto } from './dto/reverse-journal-entry.dto';
 import { LedgerService } from './ledger.service';
@@ -23,8 +23,17 @@ export class LedgerController {
     private readonly rbac: RbacService,
   ) {}
 
+  // ledger:view exists in the RBAC catalog specifically for Treasurer/
+  // Auditor to see real account balances — this route had no check at
+  // all before, so any plain Member (zero ledger grants) could read the
+  // exact live Cash/Contributions Income/etc. balance for any account id
+  // in their org.
   @Get('ledger-accounts/:id/balance')
-  getBalance(@CurrentUser() user: AuthTokenPayload, @Param('id') id: string) {
+  async getBalance(
+    @CurrentUser() user: AuthTokenPayload,
+    @Param('id') id: string,
+  ) {
+    await requirePermission(this.rbac, user, 'ledger', 'view');
     return this.ledger.getLedgerAccountBalance(user.organisationId, id);
   }
 

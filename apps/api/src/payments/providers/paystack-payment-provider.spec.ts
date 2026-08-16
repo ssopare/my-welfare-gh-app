@@ -75,7 +75,7 @@ describe('PaystackPaymentProvider', () => {
     // provider substitutes Paystack's documented sandbox MoMo number
     // rather than the real params.phoneNumber — see the test-mode branch
     // in paystack-payment-provider.service.ts.
-    expect(body.mobile_money).toEqual({ phone: '0551234567', provider: 'mtn' });
+    expect(body.mobile_money).toEqual({ phone: '0551234987', provider: 'mtn' });
     expect(body.metadata).toEqual({ organisationId: 'org-1' });
     expect(body.email).toBe('member.intent-1@example.com');
 

@@ -285,7 +285,7 @@ describe('Ledger (e2e)', () => {
 
     const paymentRes = await request(app.getHttpServer())
       .post('/payments/contribution')
-      .set('Authorization', `Bearer ${member.accessToken}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
       .send({
         memberId: member.identity.memberId,
         fundId: fund.id,
@@ -331,6 +331,45 @@ describe('Ledger (e2e)', () => {
     const updatedObligation = (obligationsRes.body as ObligationResponse[])[0];
     expect(updatedObligation.status).toBe('PAID');
     expect(updatedObligation.amountPaid).toBe('20');
+  });
+
+  // Regression: recordContributionPayment used to be requireSelfOrAdmin,
+  // which let a member mark their own dues PAID with a single request and
+  // zero actual payment — no provider charge, no webhook, nothing. Now
+  // admin/treasurer only (ledger:disburse), matching the method's own
+  // doc comment ("a treasurer entering a payment they collected").
+  it('a member cannot record their own contribution payment as received — no free rides', async () => {
+    const admin = await registerOrganisation('No Self-Recorded Payments Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '20.00');
+    const obligation = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-09-01',
+    );
+
+    await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '20.00',
+        currency: 'GHS',
+      })
+      .expect(403);
+
+    const obligationsRes = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}/obligations`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(200);
+    const untouched = (obligationsRes.body as ObligationResponse[]).find(
+      (o) => o.id === obligation.id,
+    );
+    expect(untouched?.status).toBe('UPCOMING');
+    expect(untouched?.amountPaid).toBe('0');
   });
 
   it('a partial payment leaves the obligation PARTIALLY_PAID with the correct amountPaid', async () => {
@@ -1164,7 +1203,7 @@ describe('Ledger (e2e)', () => {
     );
     await request(app.getHttpServer())
       .post('/payments/contribution')
-      .set('Authorization', `Bearer ${member.accessToken}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
       .send({
         memberId: member.identity.memberId,
         fundId: generalFund.id,
@@ -1445,5 +1484,27 @@ describe('Ledger (e2e)', () => {
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .expect(200);
     expect((meRes.body as { creditBalance: string }).creditBalance).toBe('0');
+  });
+
+  // Regression: GET /ledger-accounts/:id/balance had no permission check
+  // at all — any plain Member (zero ledger grants) could read the exact
+  // live balance of any account in their org. ledger:view exists in the
+  // RBAC catalog specifically for Treasurer/Auditor; a plain Member has
+  // neither that nor admin.
+  it('a plain member cannot read a ledger account balance — ledger:view required', async () => {
+    const admin = await registerOrganisation('Balance View Permission Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const cashAccount = findAccount(fund, 'Cash');
+
+    await request(app.getHttpServer())
+      .get(`/ledger-accounts/${cashAccount.id}/balance`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`/ledger-accounts/${cashAccount.id}/balance`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
   });
 });

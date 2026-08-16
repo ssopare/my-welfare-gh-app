@@ -323,6 +323,55 @@ describe('Payments (e2e)', () => {
     expect(updated?.status).toBe('PAID');
   });
 
+  it('the generic webhook cannot be used to fake a payment once a real provider is configured', async () => {
+    const admin = await registerOrganisation('Payments Fake Webhook Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '25.00');
+    const obligation = await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-09-01',
+    );
+
+    // A member initiating a payment legitimately gets their own
+    // providerReference back in the response — exactly what an attacker
+    // would need to forge a "succeeded" webhook for their own unpaid
+    // obligation without ever actually paying.
+    const intent = await initiatePayment(
+      member.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '25.00',
+    );
+
+    const originalProvider = process.env.PAYMENT_PROVIDER;
+    process.env.PAYMENT_PROVIDER = 'paystack';
+    try {
+      await request(app.getHttpServer())
+        .post('/payments/webhook')
+        .send({
+          organisationId: admin.identity.organisationId,
+          providerReference: intent.providerReference,
+          status: 'succeeded',
+        })
+        .expect(401);
+    } finally {
+      process.env.PAYMENT_PROVIDER = originalProvider;
+    }
+
+    // Confirm the fake webhook truly did nothing — no free ride.
+    const obligationsRes = await request(app.getHttpServer())
+      .get(`/members/${member.identity.memberId}/obligations`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const untouched = (obligationsRes.body as ObligationResponse[]).find(
+      (o) => o.id === obligation.id,
+    );
+    expect(untouched?.status).not.toBe('PAID');
+  });
+
   it('member_selected: the obligation choice made at initiate time survives to the webhook and is what actually gets paid', async () => {
     const admin = await registerOrganisation('Payments Member Selected Org');
     const member = await joinOrganisation(admin.identity.organisationId);

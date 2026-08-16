@@ -26,7 +26,7 @@ const ALWAYS_PUBLIC_PATHS = ["/welfare_login_bg.png"];
 const PLATFORM_SESSION_COOKIE = "wf_platform_session";
 const PLATFORM_PUBLIC_PATHS = ["/platform/login"];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (pathname.startsWith("/platform")) {

@@ -107,7 +107,7 @@ export class PaystackPaymentProvider implements PaymentProvider {
             phone: process.env.PAYSTACK_SECRET_KEY?.toLowerCase().includes(
               'test',
             )
-              ? '0551234567'
+              ? '0551234987'
               : params.phoneNumber.replace(/[-\s()]/g, ''),
             provider: params.momoProvider,
           },

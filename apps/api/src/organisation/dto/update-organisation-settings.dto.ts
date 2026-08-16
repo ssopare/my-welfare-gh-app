@@ -16,9 +16,15 @@ export class UpdateOrganisationSettingsDto {
   @IsIn(IMPLEMENTED_PAYMENT_ALLOCATION_POLICIES)
   paymentAllocationPolicy?: (typeof IMPLEMENTED_PAYMENT_ALLOCATION_POLICIES)[number];
 
+  // OTP_ONLY/PASSWORD_AND_OTP are schema-valid but not accepted here —
+  // same "don't let an admin opt into what nothing actually implements"
+  // reasoning as paymentAllocationPolicy above. The OTP check they'd
+  // enable was never wired to a real SMS provider, just a hardcoded
+  // universal code (see AuthService.effectiveAuthStrategy) — restore
+  // once real SMS delivery exists.
   @IsOptional()
-  @IsIn(['PASSWORD_ONLY', 'OTP_ONLY', 'PASSWORD_AND_OTP'])
-  authStrategy?: 'PASSWORD_ONLY' | 'OTP_ONLY' | 'PASSWORD_AND_OTP';
+  @IsIn(['PASSWORD_ONLY'])
+  authStrategy?: 'PASSWORD_ONLY';
 
   @IsOptional()
   @IsString()

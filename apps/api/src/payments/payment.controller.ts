@@ -34,11 +34,24 @@ export class PaymentController {
   }
 
   // No JwtAuthGuard: this is a provider callback, not an authenticated app
-  // user — there's no JWT to check. Real hardening (verifying the
-  // provider's webhook signature) is deferred — see MockPaymentProvider's
-  // comment; there's no live provider secret to verify against yet.
+  // user — there's no JWT to check. This route has NO signature
+  // verification of its own (see MockPaymentProvider's comment: it's how
+  // dev/test flows and the e2e suite "complete" a mock payment) — which
+  // means anyone who knows an organisationId + providerReference can mark
+  // that payment SUCCEEDED and have it posted to the real ledger, no
+  // actual payment required. A member gets their own providerReference
+  // back from /payments/contribution/initiate, so left universally live
+  // this would let any member pay off their own dues for free. Only
+  // safe because it's disabled the moment a real provider is configured
+  // below — a genuine deployment only ever trusts the cryptographically
+  // signed /payments/webhook/paystack route.
   @Post('payments/webhook')
   handleWebhook(@Body() dto: WebhookPayloadDto) {
+    if (process.env.PAYMENT_PROVIDER === 'paystack') {
+      throw new UnauthorizedException(
+        'This endpoint is disabled when a real payment provider is configured — use the signed provider webhook instead',
+      );
+    }
     return this.payments.handleWebhook(dto);
   }
 

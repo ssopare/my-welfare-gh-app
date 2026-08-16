@@ -14,7 +14,7 @@ import { InitiateContributionPaymentDto } from './dto/initiate-contribution-paym
 import { WebhookPayloadDto } from './dto/webhook-payload.dto';
 import { PAYMENT_PROVIDER } from './providers/payment-provider.interface';
 import type { PaymentProvider } from './providers/payment-provider.interface';
-import { PaymentIntent } from '../../generated/prisma/client';
+import { PaymentIntent, Prisma } from '../../generated/prisma/client';
 @Injectable()
 export class PaymentService {
   constructor(
@@ -32,6 +32,17 @@ export class PaymentService {
     dto: InitiateContributionPaymentDto,
   ): Promise<PaymentIntent & { displayText?: string }> {
     await requireSelfOrAdmin(this.rbac, actor, dto.memberId);
+
+    // Same guard PayoutService.createPayoutRequest already has — amountValue
+    // is only class-validator's @IsNumberString here, which accepts "0" and
+    // negative strings. Without this, a zero/negative amount would sail
+    // through MockPaymentProvider (which never checks it) and, once
+    // confirmed, post a reversing entry to the real ledger. A real Paystack
+    // charge would likely reject it too, but that's a third party's
+    // validation to rely on, not ours.
+    if (new Prisma.Decimal(dto.amountValue).lessThanOrEqualTo(0)) {
+      throw new BadRequestException('Amount must be positive');
+    }
 
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
       // Only a fail-fast, policy-consistency check here — whether the

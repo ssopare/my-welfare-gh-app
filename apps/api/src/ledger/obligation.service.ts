@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { ContributionPlan, Prisma } from '../../generated/prisma/client';
 import type { AuthTokenPayload } from '../auth/auth.service';
-import { requireAdmin, requireSelfOrAdmin } from '../common/access.util';
+import {
+  requireAdmin,
+  requirePermission,
+  requireSelfOrAdmin,
+} from '../common/access.util';
 import { DefaulterService } from '../defaulter/defaulter.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
@@ -151,11 +155,19 @@ export class ObligationService {
   // per the org's configured policy, then posts the matching balanced
   // JournalEntry (Cash debit / Contributions Income credit) — both in the
   // same transaction, so a failure in either rolls back both.
+  // Admin/Treasurer only (reuses the same ledger:disburse grant the
+  // Treasurer starter role already has for payouts — there's no separate
+  // "record incoming payment" permission in the catalog yet). This used
+  // to be requireSelfOrAdmin, which let a member mark their own dues PAID
+  // with a single authenticated request and zero actual payment — no
+  // provider charge, no webhook, nothing. This is exactly the trusted
+  // "I personally collected this cash/transfer" attestation the method's
+  // own doc comment describes; it was never meant to be self-service.
   async recordContributionPayment(
     actor: AuthTokenPayload,
     dto: RecordContributionPaymentDto,
   ) {
-    await requireSelfOrAdmin(this.rbac, actor, dto.memberId);
+    await requirePermission(this.rbac, actor, 'ledger', 'disburse');
     return this.prisma.withTenant(actor.organisationId, (tx) =>
       this.recordContributionPaymentInTx(
         tx,

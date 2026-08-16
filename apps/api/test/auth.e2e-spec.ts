@@ -810,9 +810,17 @@ describe('Auth (e2e)', () => {
     expect(body.authStrategy).toBe('PASSWORD_ONLY');
   });
 
-  it('enforces OTP_ONLY strategy during login and join', async () => {
+  // Regression: OTP_ONLY/PASSWORD_AND_OTP were never wired to a real SMS
+  // provider — the "OTP" check was a hardcoded universal '123456' code,
+  // which meant anyone who knew it could join or log in as *any* phone
+  // number under an org that had picked either strategy, no password
+  // needed at all under OTP_ONLY. Disabled everywhere now
+  // (AuthService.effectiveAuthStrategy) regardless of what an
+  // organisation has stored — this proves the old bypass is dead and a
+  // real password is required either way.
+  it('ignores a stored OTP_ONLY strategy — a real password is still required, the universal code no longer works', async () => {
     const org = await prisma.provisionOrganisation({
-      legalName: 'OTP Only Org',
+      legalName: 'Former OTP Only Org',
       type: 'voluntary',
       joinCode: `OTPONLY-${Date.now()}`,
     });
@@ -826,23 +834,27 @@ describe('Auth (e2e)', () => {
 
     const phoneNumber = uniquePhone();
 
+    // The old universal bypass code, with no password at all — no longer
+    // sufficient on its own.
     await request(app.getHttpServer())
       .post('/auth/join-organisation')
       .send({
         phoneNumber,
         name: 'OTP Joiner',
         joinCode: org.joinCode,
-        otpCode: 'wrong-otp',
+        otpCode: '123456',
       })
-      .expect(401);
+      .expect(400);
 
+    // A real password works instead — the org's stored OTP_ONLY setting
+    // is inert.
     const joinRes = await request(app.getHttpServer())
       .post('/auth/join-organisation')
       .send({
         phoneNumber,
         name: 'OTP Joiner',
+        password: 'correct-horse-battery-staple',
         joinCode: org.joinCode,
-        otpCode: '123456',
       })
       .expect(201);
 
@@ -853,10 +865,28 @@ describe('Auth (e2e)', () => {
 
     await request(app.getHttpServer())
       .post('/auth/login')
-      .send({
-        phoneNumber,
-        otpCode: '123456',
-      })
+      .send({ phoneNumber, otpCode: '123456' })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ phoneNumber, password: 'correct-horse-battery-staple' })
       .expect(200);
+  });
+
+  it('rejects setting authStrategy to anything other than PASSWORD_ONLY', async () => {
+    const { accessToken } = await registerOrganisation({
+      phoneNumber: uniquePhone(),
+      password: 'correct-horse-battery-staple',
+      legalName: 'Reject OTP Setting Org',
+      organisationType: 'voluntary',
+    });
+    trackForCleanup(await me(accessToken));
+
+    await request(app.getHttpServer())
+      .patch('/organisation')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ authStrategy: 'OTP_ONLY' })
+      .expect(400);
   });
 });

@@ -11,11 +11,12 @@ interface OrgSettingsFormProps {
   action: (prevState: FormActionState, formData: FormData) => Promise<FormActionState>;
 }
 
-const AUTH_STRATEGIES = [
-  { value: "PASSWORD_ONLY", label: "Password only" },
-  { value: "OTP_ONLY", label: "OTP / SMS only" },
-  { value: "PASSWORD_AND_OTP", label: "Password + OTP (2FA)" },
-];
+// OTP_ONLY/PASSWORD_AND_OTP are intentionally not offered — they were
+// never wired to a real SMS provider, just a hardcoded universal code any
+// account could be accessed with (see AuthService.effectiveAuthStrategy
+// and UpdateOrganisationSettingsDto.authStrategy on the API side, which
+// reject anything but PASSWORD_ONLY regardless of what this form sends).
+const AUTH_STRATEGIES = [{ value: "PASSWORD_ONLY", label: "Password only" }];
 
 const ALLOCATION_POLICIES = [
   { value: "oldest_first", label: "Oldest obligation first (default)" },
