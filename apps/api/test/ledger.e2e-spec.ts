@@ -1262,6 +1262,42 @@ describe('Ledger (e2e)', () => {
       .expect(400);
   });
 
+  it("rejects a fund transfer that exceeds the source fund's cash balance", async () => {
+    const admin = await registerOrganisation('Ledger Transfer Overdraw Org');
+    const generalFund = await createFund(admin.accessToken);
+    const medicalFundRes = await request(app.getHttpServer())
+      .post('/funds')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ name: 'Medical Fund' })
+      .expect(201);
+    const medicalFund = medicalFundRes.body as FundResponse;
+
+    // generalFund's Cash balance is still 0 — nothing has been paid into
+    // it — so any positive transfer out of it must be rejected.
+    const overdrawRes = await request(app.getHttpServer())
+      .post(`/funds/${generalFund.id}/transfer`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ toFundId: medicalFund.id, amountValue: '50.00' })
+      .expect(400);
+    expect((overdrawRes.body as { message: string }).message).toContain(
+      'Insufficient fund balance',
+    );
+
+    const generalCash = findAccount(generalFund, 'Cash');
+    const medicalCash = findAccount(medicalFund, 'Cash');
+    const generalBalanceRes = await request(app.getHttpServer())
+      .get(`/ledger-accounts/${generalCash.id}/balance`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const medicalBalanceRes = await request(app.getHttpServer())
+      .get(`/ledger-accounts/${medicalCash.id}/balance`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    // Confirms the rejected transfer posted nothing to either side.
+    expect((generalBalanceRes.body as BalanceResponse).balance).toBe('0');
+    expect((medicalBalanceRes.body as BalanceResponse).balance).toBe('0');
+  });
+
   it('an admin can extend a fund with a custom account; non-admin and duplicate names are rejected', async () => {
     const admin = await registerOrganisation('Ledger Custom Account Org');
     const member = await joinOrganisation(admin.identity.organisationId);

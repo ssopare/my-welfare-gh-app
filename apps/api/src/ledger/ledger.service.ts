@@ -185,6 +185,21 @@ export class LedgerService {
         'Fund Equity',
       );
 
+      // Same check PayoutService.createPayoutRequest does before it lets
+      // cash leave a fund — without it, a transfer can post a source-fund
+      // Cash balance that goes negative, which no other part of the ledger
+      // ever allows.
+      const fromBalanceRes = await this.getLedgerAccountBalanceInTx(
+        tx,
+        fromCash.id,
+      );
+      const fromBalance = new Prisma.Decimal(fromBalanceRes.balance);
+      if (fromBalance.lessThan(amount)) {
+        throw new BadRequestException(
+          `Insufficient fund balance: Available cash is ${fromBalance.toString()} GHS`,
+        );
+      }
+
       const outEntry = await this.postJournalEntryInTx(
         tx,
         actor.organisationId,
