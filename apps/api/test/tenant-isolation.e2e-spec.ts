@@ -12,6 +12,8 @@ describe('Tenant isolation (RLS)', () => {
   let orgB: { id: string };
   let emptyOrg: { id: string };
   let accountId: string;
+  let electionA: { id: string };
+  let electionB: { id: string };
 
   beforeAll(async () => {
     prisma = new PrismaService();
@@ -42,15 +44,58 @@ describe('Tenant isolation (RLS)', () => {
 
     // Seed one member under each of A and B, from within that org's own
     // tenant context — exactly like a real request would.
-    await prisma.withTenant(orgA.id, (tx) =>
+    const memberA = await prisma.withTenant(orgA.id, (tx) =>
       tx.member.create({ data: { accountId, organisationId: orgA.id } }),
     );
     await prisma.withTenant(orgB.id, (tx) =>
       tx.member.create({ data: { accountId, organisationId: orgB.id } }),
     );
+
+    // One election per org (20260816020000_voting_tables_rls) — election
+    // carries organisationId directly; nominee is one of the six child
+    // tables scoped only through electionId, proving the join-based
+    // policy variant too.
+    const now = new Date();
+    const later = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    electionA = await prisma.withTenant(orgA.id, (tx) =>
+      tx.election.create({
+        data: {
+          organisationId: orgA.id,
+          title: 'Org A Officer Election',
+          type: 'OFFICER',
+          startsAt: now,
+          endsAt: later,
+        },
+      }),
+    );
+    electionB = await prisma.withTenant(orgB.id, (tx) =>
+      tx.election.create({
+        data: {
+          organisationId: orgB.id,
+          title: 'Org B Officer Election',
+          type: 'OFFICER',
+          startsAt: now,
+          endsAt: later,
+        },
+      }),
+    );
+    await prisma.withTenant(orgA.id, (tx) =>
+      tx.nominee.create({
+        data: { electionId: electionA.id, memberId: memberA.id },
+      }),
+    );
   });
 
   afterAll(async () => {
+    await prisma.withTenant(orgA.id, (tx) =>
+      tx.nominee.deleteMany({ where: { electionId: electionA.id } }),
+    );
+    await prisma.withTenant(orgA.id, (tx) =>
+      tx.election.deleteMany({ where: { organisationId: orgA.id } }),
+    );
+    await prisma.withTenant(orgB.id, (tx) =>
+      tx.election.deleteMany({ where: { organisationId: orgB.id } }),
+    );
     await prisma.withTenant(orgA.id, (tx) =>
       tx.member.deleteMany({ where: { organisationId: orgA.id } }),
     );
@@ -106,6 +151,37 @@ describe('Tenant isolation (RLS)', () => {
     expect(orgs.map((o) => o.id)).toEqual([orgA.id]);
   });
 
+  // 20260816020000_voting_tables_rls — elections carry organisationId
+  // directly, so this is the same policy shape as organisation/member
+  // above.
+  it("tenant A's scope contains only its own election, never tenant B's", async () => {
+    const elections = await prisma.withTenant(orgA.id, (tx) =>
+      tx.election.findMany(),
+    );
+    expect(elections.map((e) => e.id)).toEqual([electionA.id]);
+  });
+
+  it("tenant B's scope contains only its own election, never tenant A's", async () => {
+    const elections = await prisma.withTenant(orgB.id, (tx) =>
+      tx.election.findMany(),
+    );
+    expect(elections.map((e) => e.id)).toEqual([electionB.id]);
+  });
+
+  // Nominee has no organisationId column at all — it's scoped only
+  // through electionId, so this proves the join-based policy variant
+  // (the one every other voting child table also uses) actually works,
+  // not just the direct-column case elections/organisations/members share.
+  it("tenant B's scope cannot read tenant A's nominee, scoped only through electionId", async () => {
+    const [nomineesInA, nomineesInB] = await Promise.all([
+      prisma.withTenant(orgA.id, (tx) => tx.nominee.findMany()),
+      prisma.withTenant(orgB.id, (tx) => tx.nominee.findMany()),
+    ]);
+    expect(nomineesInA).toHaveLength(1);
+    expect(nomineesInA[0].electionId).toBe(electionA.id);
+    expect(nomineesInB).toHaveLength(0);
+  });
+
   it('default-denies with no tenant context set at all', async () => {
     // No withTenant() wrapper here — app.tenant_id is unset, so
     // current_setting(..., true) is NULL and the RLS policy (organisationId
@@ -115,7 +191,11 @@ describe('Tenant isolation (RLS)', () => {
     // nothing," never "see everything."
     const members = await prisma.member.findMany();
     const orgs = await prisma.organisation.findMany();
+    const elections = await prisma.election.findMany();
+    const nominees = await prisma.nominee.findMany();
     expect(members).toHaveLength(0);
     expect(orgs).toHaveLength(0);
+    expect(elections).toHaveLength(0);
+    expect(nominees).toHaveLength(0);
   });
 });
