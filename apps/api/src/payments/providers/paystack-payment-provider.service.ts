@@ -113,7 +113,6 @@ export class PaystackPaymentProvider implements PaymentProvider {
           },
           reference: params.metadata.reference,
           metadata: { organisationId: params.metadata.organisationId },
-          ...(params.subaccount ? { subaccount: params.subaccount } : {}),
         }),
       });
     } catch {

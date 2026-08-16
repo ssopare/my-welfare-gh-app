@@ -15,7 +15,6 @@ export interface InitiatePaymentParams {
   // CARD/BANK_TRANSFER implementation).
   phoneNumber: string;
   momoProvider?: 'mtn' | 'vod' | 'atl';
-  subaccount?: string;
 }
 
 export interface InitiatePaymentResult {

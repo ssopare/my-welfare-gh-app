@@ -7,3 +7,4 @@ import 'dotenv/config';
 // the automated suite (which would make it flaky, slow, hit a real API
 // with fixtures never designed for it, and burn real API quota).
 process.env.PAYMENT_PROVIDER = 'mock';
+process.env.TRANSFER_PROVIDER = 'mock';

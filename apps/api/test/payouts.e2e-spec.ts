@@ -18,7 +18,7 @@ interface MeResponse {
 
 interface SettlementAccountResponse {
   verified: boolean;
-  providerSubaccountCode: string;
+  providerRecipientCode: string;
   accountNumber: string;
 }
 
@@ -256,13 +256,16 @@ describe('Payouts & Treasury (e2e)', () => {
       await registerOrganisation('Teshie Payout Welfare');
     const { token: checkerToken } = await registerMember(organisationId);
 
-    // 1. Setup Settlement Account
+    // 1. Setup Settlement Account — a real Paystack Transfer Recipient
+    // call (MockTransferProvider in the test environment), not the old
+    // fake bank-settled subaccount.
     await request(app.getHttpServer())
       .post('/payouts/settlement-account')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        bankName: 'MTN Mobile Money',
-        accountNumber: '0559998887',
+        momoProvider: 'mtn',
+        phoneNumber: '0559998887',
+        accountName: 'Teshie Payout Welfare',
       })
       .expect(201);
 
@@ -271,15 +274,12 @@ describe('Payouts & Treasury (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
-    // Not actually verified with Paystack (no real subaccount API call
-    // exists yet) — verified stays false so payment.service.ts never
-    // routes a live charge at a subaccount code Paystack has never heard
-    // of. See the comment on PayoutService.createSettlementAccount.
+    // MockTransferProvider confirms recipient creation immediately —
+    // verified is genuinely true here, not hardcoded false the way the
+    // old fake subaccount code left it forever.
     const settlement = settlementRes.body as SettlementAccountResponse;
-    expect(settlement.verified).toBe(false);
-    expect(settlement.providerSubaccountCode).toContain(
-      'ACCT_mock_subaccount_',
-    );
+    expect(settlement.verified).toBe(true);
+    expect(settlement.providerRecipientCode).toContain('mock_rcp_');
     expect(settlement.accountNumber).toBe('******8887'); // Masked for security!
 
     // 2. Create Fund Control Policy

@@ -682,6 +682,10 @@ export class ObligationService {
         obligationId: allocation.obligationId,
         amount: allocation.amount.toString(),
       })),
+      // The post-payment-provider-fee amount that actually landed in
+      // Cash — what PayoutService's auto-disbursement math is drawn
+      // from, not the member's original gross payment.
+      netAmount: netAmount.toString(),
     };
   }
 }

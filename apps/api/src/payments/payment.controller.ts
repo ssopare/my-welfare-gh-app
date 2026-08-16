@@ -17,12 +17,17 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { InitiateContributionPaymentDto } from './dto/initiate-contribution-payment.dto';
 import { WebhookPayloadDto } from './dto/webhook-payload.dto';
+import { TransferWebhookPayloadDto } from './dto/transfer-webhook-payload.dto';
 import { PaymentService } from './payment.service';
+import { PayoutService } from './payout.service';
 import { verifyPaystackSignature } from './paystack-webhook.util';
 
 @Controller()
 export class PaymentController {
-  constructor(private readonly payments: PaymentService) {}
+  constructor(
+    private readonly payments: PaymentService,
+    private readonly payouts: PayoutService,
+  ) {}
 
   @Post('payments/contribution/initiate')
   @UseGuards(JwtAuthGuard)
@@ -55,6 +60,21 @@ export class PaymentController {
     return this.payments.handleWebhook(dto);
   }
 
+  // Mock/dev completion endpoint for a transfer — the auto-disbursement
+  // analogue of the mock payment webhook above, same reasoning and same
+  // guard: a real transfer is asynchronous (initiate only ever returns
+  // "pending"), so dev/test flows need a way to manually deliver the
+  // confirmation a real PaystackTransferProvider would otherwise wait on.
+  @Post('payments/transfers/webhook')
+  handleTransferWebhook(@Body() dto: TransferWebhookPayloadDto) {
+    if (process.env.TRANSFER_PROVIDER === 'paystack') {
+      throw new UnauthorizedException(
+        'This endpoint is disabled when a real transfer provider is configured — use the signed provider webhook instead',
+      );
+    }
+    return this.payouts.handleTransferWebhook(dto);
+  }
+
   // The real Paystack callback — separate from the generic webhook above,
   // which stays exactly as the manual/mock-provider completion path (used
   // by dev flows and the e2e suite). This route is what a live
@@ -82,21 +102,41 @@ export class PaymentController {
     };
 
     if (
-      payload.event !== 'charge.success' &&
-      payload.event !== 'charge.failed'
+      payload.event === 'charge.success' ||
+      payload.event === 'charge.failed'
     ) {
-      return { outcome: 'ignored' as const };
-    }
-    const organisationId = payload.data.metadata?.organisationId;
-    if (!organisationId) {
-      return { outcome: 'ignored' as const };
+      const organisationId = payload.data.metadata?.organisationId;
+      if (!organisationId) {
+        return { outcome: 'ignored' as const };
+      }
+      return this.payments.handleWebhook({
+        organisationId,
+        providerReference: payload.data.reference,
+        status: payload.event === 'charge.success' ? 'succeeded' : 'failed',
+      });
     }
 
-    return this.payments.handleWebhook({
-      organisationId,
-      providerReference: payload.data.reference,
-      status: payload.event === 'charge.success' ? 'succeeded' : 'failed',
-    });
+    // The auto-disbursement counterpart — a transfer is exactly as
+    // asynchronous as a charge, confirmed only here, never at initiate
+    // time (see PaystackTransferProvider.initiateTransfer). Same signed
+    // endpoint: Paystack sends every event type to one configured
+    // webhook URL, not a separate one per event.
+    if (
+      payload.event === 'transfer.success' ||
+      payload.event === 'transfer.failed'
+    ) {
+      const organisationId = payload.data.metadata?.organisationId;
+      if (!organisationId) {
+        return { outcome: 'ignored' as const };
+      }
+      return this.payouts.handleTransferWebhook({
+        organisationId,
+        providerReference: payload.data.reference,
+        status: payload.event === 'transfer.success' ? 'succeeded' : 'failed',
+      });
+    }
+
+    return { outcome: 'ignored' as const };
   }
 
   @Get('payment-intents/:id')

@@ -15,6 +15,7 @@ import { WebhookPayloadDto } from './dto/webhook-payload.dto';
 import { PAYMENT_PROVIDER } from './providers/payment-provider.interface';
 import type { PaymentProvider } from './providers/payment-provider.interface';
 import { PaymentIntent, Prisma } from '../../generated/prisma/client';
+import { PayoutService } from './payout.service';
 @Injectable()
 export class PaymentService {
   constructor(
@@ -22,6 +23,7 @@ export class PaymentService {
     private readonly obligations: ObligationService,
     private readonly rbac: RbacService,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
+    private readonly payouts: PayoutService,
   ) {}
 
   // Phase 1, FR-PAY-01: a real payment is asynchronous — this only starts
@@ -114,10 +116,11 @@ export class PaymentService {
         },
       });
 
-      const settlement = await tx.settlementAccount.findUnique({
-        where: { organisationId: actor.organisationId },
-      });
-
+      // No SettlementAccount lookup here — routing an org's own share of
+      // a contribution is now handled entirely by the async
+      // auto-disbursement path (PayoutService.triggerAutoDisbursementIfEnabledInTx,
+      // fired after this payment is confirmed), not by attaching
+      // anything to the inbound charge itself.
       const result = await this.provider.initiatePayment({
         organisationId: actor.organisationId,
         amountValue: dto.amountValue,
@@ -129,9 +132,6 @@ export class PaymentService {
           organisationId: actor.organisationId,
           reference: intent.id,
         },
-        subaccount: settlement?.verified
-          ? settlement.providerSubaccountCode
-          : undefined,
       });
 
       const providerReference = result.providerReference;
@@ -203,7 +203,7 @@ export class PaymentService {
         return { outcome: 'failed' as const };
       }
 
-      const { journalEntry } =
+      const { journalEntry, netAmount } =
         await this.obligations.recordContributionPaymentInTx(
           tx,
           dto.organisationId,
@@ -220,6 +220,15 @@ export class PaymentService {
           },
         );
 
+      const autoDisbursement =
+        await this.payouts.triggerAutoDisbursementIfEnabledInTx(
+          tx,
+          dto.organisationId,
+          intent.fundId,
+          intent.id,
+          netAmount,
+        );
+
       await tx.paymentIntent.update({
         where: { id: intent.id },
         data: {
@@ -232,6 +241,7 @@ export class PaymentService {
       return {
         outcome: 'succeeded' as const,
         journalEntryId: journalEntry.id,
+        autoDisbursementId: autoDisbursement?.id,
       };
     });
   }

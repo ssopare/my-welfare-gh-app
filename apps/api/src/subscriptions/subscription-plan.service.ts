@@ -20,6 +20,7 @@ export class SubscriptionPlanService {
         currency: dto.currency,
         billingCadence: dto.billingCadence,
         trialDays: dto.trialDays ?? 60,
+        platformFeePercentage: dto.platformFeePercentage ?? '0',
       },
     });
   }

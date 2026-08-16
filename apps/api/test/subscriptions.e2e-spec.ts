@@ -22,6 +22,7 @@ interface SubscriptionPlanResponse {
   id: string;
   name: string;
   archived: boolean;
+  platformFeePercentage: string;
 }
 
 interface SubscriptionResponse {
@@ -244,7 +245,10 @@ describe('Subscription billing (e2e)', () => {
       })
       .expect(401);
 
-    const plan = await createPlan(operator.accessToken, { name: 'Growth' });
+    const plan = await createPlan(operator.accessToken, {
+      name: 'Growth',
+      platformFeePercentage: '2.50',
+    });
 
     // Public — no auth needed at all.
     const listRes = await request(app.getHttpServer())
@@ -255,6 +259,10 @@ describe('Subscription billing (e2e)', () => {
         (p) => p.id === plan.id,
       ),
     ).toBe(true);
+    // Platform-operator-set only (this endpoint is PlatformAuthGuard-only
+    // — see the 401 assertion above), scoped to the plan so future tiers
+    // can carry different rates without a migration.
+    expect(plan.platformFeePercentage).toBe('2.5');
 
     await request(app.getHttpServer())
       .patch(`/platform/subscription-plans/${plan.id}/archive`)

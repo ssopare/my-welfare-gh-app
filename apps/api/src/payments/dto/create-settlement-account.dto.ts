@@ -1,11 +1,14 @@
-import { IsString, MinLength } from 'class-validator';
+import { IsIn, IsString, MinLength } from 'class-validator';
 
 export class CreateSettlementAccountDto {
-  @IsString()
-  @MinLength(1)
-  bankName!: string;
+  @IsIn(['mtn', 'vod', 'atl'])
+  momoProvider!: 'mtn' | 'vod' | 'atl';
 
   @IsString()
   @MinLength(1)
-  accountNumber!: string;
+  phoneNumber!: string;
+
+  @IsString()
+  @MinLength(1)
+  accountName!: string;
 }

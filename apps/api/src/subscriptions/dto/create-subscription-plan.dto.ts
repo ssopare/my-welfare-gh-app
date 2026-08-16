@@ -32,4 +32,14 @@ export class CreateSubscriptionPlanDto {
   @IsInt()
   @Min(0)
   trialDays?: number;
+
+  // The platform's cut of every contribution auto-disbursed for an
+  // organisation on this plan (see AutoDisbursement) — scoped to the
+  // plan, not a single global number, so future tiers can carry
+  // different rates without a migration. Platform-operator-set only
+  // (this DTO is only ever reachable via PlatformAuthGuard); defaults to
+  // '0' when omitted.
+  @IsOptional()
+  @IsNumberString()
+  platformFeePercentage?: string;
 }

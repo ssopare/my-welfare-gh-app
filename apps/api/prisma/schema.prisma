@@ -100,6 +100,7 @@ model Organisation {
   payoutRequests           PayoutRequest[]
   fundControlPolicy        FundControlPolicy?
   reconciliationRecords    ReconciliationRecord[]
+  autoDisbursements        AutoDisbursement[]
 
   @@map("organisations")
 }
@@ -361,12 +362,13 @@ model Fund {
   name           String
   createdAt      DateTime @default(now())
 
-  organisation    Organisation       @relation(fields: [organisationId], references: [id])
-  ledgerAccounts  LedgerAccount[]
-  journalEntries  JournalEntry[]
-  paymentIntents  PaymentIntent[]
-  defaultForPlans ContributionPlan[]
-  payoutRequests  PayoutRequest[]
+  organisation      Organisation       @relation(fields: [organisationId], references: [id])
+  ledgerAccounts    LedgerAccount[]
+  journalEntries    JournalEntry[]
+  paymentIntents    PaymentIntent[]
+  defaultForPlans   ContributionPlan[]
+  payoutRequests    PayoutRequest[]
+  autoDisbursements AutoDisbursement[]
 
   @@index([organisationId])
   @@map("funds")
@@ -597,10 +599,11 @@ model PaymentIntent {
   createdAt         DateTime            @default(now())
   completedAt       DateTime?
 
-  organisation Organisation  @relation(fields: [organisationId], references: [id])
-  member       Member        @relation(fields: [memberId], references: [id])
-  fund         Fund          @relation(fields: [fundId], references: [id])
-  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id])
+  organisation     Organisation      @relation(fields: [organisationId], references: [id])
+  member           Member            @relation(fields: [memberId], references: [id])
+  fund             Fund              @relation(fields: [fundId], references: [id])
+  journalEntry     JournalEntry?     @relation(fields: [journalEntryId], references: [id])
+  autoDisbursement AutoDisbursement?
 
   @@index([organisationId])
   @@map("payment_intents")
@@ -997,6 +1000,13 @@ model SubscriptionPlan {
   currency       String
   billingCadence String
   trialDays      Int      @default(60)
+  // The platform's cut of every auto-disbursed contribution for an
+  // organisation on this plan — see AutoDisbursement. Scoped to the plan
+  // (not a single global number) so future tiers can carry different
+  // rates without a migration; 0 for every plan today, and 0 for any
+  // organisation with no plan assigned at all (Subscription.planId is
+  // nullable — trial orgs pay nothing until they pick one).
+  platformFeePercentage Decimal  @db.Decimal(5, 2) @default(0)
   archived       Boolean  @default(false)
   createdAt      DateTime @default(now())
 
@@ -1177,12 +1187,21 @@ model AnonymousBallot {
   @@map("anonymous_ballots")
 }
 
+// Where THIS organisation's own share of collected contributions gets
+// auto-disbursed to — a real Paystack Transfer Recipient of type
+// mobile_money, not a bank-settled "subaccount" (Paystack subaccounts
+// only settle to a bank account, never a MoMo wallet, on their own batch
+// schedule — confirmed against Paystack's docs, hence this model no
+// longer models one). providerRecipientCode/verified stay null/false
+// until PayoutService.createSettlementAccount's real call to Paystack's
+// Transfer Recipient API actually succeeds.
 model SettlementAccount {
   id                    String       @id @default(uuid())
   organisationId        String       @unique
-  providerSubaccountCode String
-  bankName              String
-  accountNumber         String
+  momoProvider          String // 'mtn' | 'vod' | 'atl'
+  accountName           String
+  accountNumber         String // the MoMo phone number
+  providerRecipientCode String?
   verified              Boolean      @default(false)
   createdAt             DateTime     @default(now())
 
@@ -1250,10 +1269,54 @@ model FundControlPolicy {
   monthlyLimitValue         Decimal      @db.Decimal(12, 2)
   thresholdOneApproverValue Decimal      @db.Decimal(12, 2)
   thresholdTwoApproversValue Decimal      @db.Decimal(12, 2)
+  // Org-admin opt-in: when true, a contribution's net share is sent to
+  // this org's SettlementAccount automatically the moment the payment
+  // webhook confirms — no maker-checker approval (deliberately, unlike
+  // the manual PayoutRequest flow below). False for every org unless an
+  // admin explicitly turns it on.
+  autoDisbursement          Boolean      @default(false)
 
   organisation              Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
 
   @@map("fund_control_policies")
+}
+
+// One row per auto-disbursement attempt, 1:1 with the PaymentIntent that
+// triggered it — same idempotent-by-providerReference confirmation shape
+// as PaymentIntent itself (see PayoutService.handleTransferWebhook),
+// since a Paystack transfer is just as asynchronous as a charge: the
+// initiate call only ever returns "pending", the real outcome arrives via
+// a later transfer.success/transfer.failed webhook.
+model AutoDisbursement {
+  id                     String        @id @default(uuid())
+  organisationId         String
+  fundId                 String
+  paymentIntentId        String        @unique
+  // The post-payment-provider-fee amount that actually landed in this
+  // fund's Cash account (ObligationService's existing netAmount) — the
+  // pool this disbursement is drawn from, not the member's original
+  // gross payment.
+  disbursableAmountValue Decimal       @db.Decimal(12, 2)
+  // Snapshot of the rate actually applied, kept even if the org's plan
+  // (or its fee) changes later — this row must stay an honest historical
+  // record.
+  platformFeePercentage  Decimal       @db.Decimal(5, 2)
+  platformFeeValue       Decimal       @db.Decimal(12, 2)
+  transferAmountValue    Decimal       @db.Decimal(12, 2)
+  currency               String        @default("GHS")
+  status                 String        @default("PENDING") // PENDING | SUCCEEDED | FAILED
+  providerReference      String        @unique
+  providerRecipientCode  String?
+  failureReason          String?
+  createdAt              DateTime      @default(now())
+  completedAt            DateTime?
+
+  organisation  Organisation  @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  fund          Fund          @relation(fields: [fundId], references: [id])
+  paymentIntent PaymentIntent @relation(fields: [paymentIntentId], references: [id])
+
+  @@index([organisationId])
+  @@map("auto_disbursements")
 }
 
 model ReconciliationRecord {
