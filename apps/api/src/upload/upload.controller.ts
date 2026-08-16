@@ -7,13 +7,22 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { mkdirSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
-import { v4 as uuidv4 } from 'uuid';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
+const UPLOAD_DIR = join(process.cwd(), 'uploads', 'avatars');
+
+// multer's diskStorage never creates its destination directory — it's not
+// tracked in git (nothing to commit, it's write-only user data), so a
+// fresh checkout/container/deploy has no uploads/avatars/ at all until
+// this runs. Without it, the very first avatar upload anywhere would
+// 500 with ENOENT instead of ever reaching fileFilter/validation.
+mkdirSync(UPLOAD_DIR, { recursive: true });
 
 @Controller('upload')
 @UseGuards(JwtAuthGuard)
@@ -35,9 +44,12 @@ export class UploadController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
-        destination: join(process.cwd(), 'uploads', 'avatars'),
+        destination: UPLOAD_DIR,
         filename: (_req, file, cb) => {
-          cb(null, `${uuidv4()}${extname(file.originalname).toLowerCase()}`);
+          cb(
+            null,
+            `${randomUUID()}${extname(file.originalname).toLowerCase()}`,
+          );
         },
       }),
       limits: { fileSize: MAX_BYTES },
