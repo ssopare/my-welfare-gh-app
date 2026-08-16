@@ -25,10 +25,22 @@ export function SettlementForm({ settlement }: { settlement: SettlementAccount |
             <span className="text-muted-foreground">Subaccount Code:</span>
             <span className="font-mono text-xs">{settlement.providerSubaccountCode}</span>
             <span className="text-muted-foreground">Verification Status:</span>
-            <span className="flex items-center gap-1 font-semibold text-status-good">
-              <CheckCircle className="size-4" /> Verified
-            </span>
+            {settlement.verified ? (
+              <span className="flex items-center gap-1 font-semibold text-status-good">
+                <CheckCircle className="size-4" /> Verified
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 font-semibold text-status-warn">
+                <ShieldAlert className="size-4" /> Not yet verified
+              </span>
+            )}
           </div>
+          {!settlement.verified && (
+            <p className="text-xs text-status-warn">
+              This settlement account hasn&apos;t been verified with the payment provider yet — incoming
+              contributions won&apos;t be routed to it until verification is complete.
+            </p>
+          )}
           <p className="text-xs text-muted-foreground italic">
             To update settlement routing, re-submit the configuration details below.
           </p>

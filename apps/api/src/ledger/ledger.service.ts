@@ -262,35 +262,48 @@ export class LedgerService {
     organisationId: string,
     ledgerAccountId: string,
   ) {
-    return this.prisma.withTenant(organisationId, async (tx) => {
-      const account = await tx.ledgerAccount.findUnique({
-        where: { id: ledgerAccountId },
-      });
-      if (!account) {
-        throw new NotFoundException('Ledger account not found');
-      }
+    return this.prisma.withTenant(organisationId, (tx) =>
+      this.getLedgerAccountBalanceInTx(tx, ledgerAccountId),
+    );
+  }
 
-      const totals = await tx.journalLine.aggregate({
-        where: { ledgerAccountId },
-        _sum: { debit: true, credit: true },
-      });
-      const debitTotal = totals._sum.debit ?? new Prisma.Decimal(0);
-      const creditTotal = totals._sum.credit ?? new Prisma.Decimal(0);
-
-      // ASSET/EXPENSE accounts carry a normal debit balance;
-      // LIABILITY/INCOME/EQUITY carry a normal credit balance.
-      const normalDebitBalance =
-        account.type === 'ASSET' || account.type === 'EXPENSE';
-      const balance = normalDebitBalance
-        ? debitTotal.minus(creditTotal)
-        : creditTotal.minus(debitTotal);
-
-      return {
-        ledgerAccountId,
-        type: account.type,
-        balance: balance.toString(),
-      };
+  // Same logic as getLedgerAccountBalance, for a caller that already has
+  // an open tenant transaction (e.g. PayoutService checking cash balance
+  // mid-payout-request) — reuses that connection/transaction instead of
+  // opening a second, independent one via withTenant, which would neither
+  // see the outer transaction's uncommitted writes nor share its
+  // connection (a real risk under a small pool).
+  async getLedgerAccountBalanceInTx(
+    tx: Prisma.TransactionClient,
+    ledgerAccountId: string,
+  ) {
+    const account = await tx.ledgerAccount.findUnique({
+      where: { id: ledgerAccountId },
     });
+    if (!account) {
+      throw new NotFoundException('Ledger account not found');
+    }
+
+    const totals = await tx.journalLine.aggregate({
+      where: { ledgerAccountId },
+      _sum: { debit: true, credit: true },
+    });
+    const debitTotal = totals._sum.debit ?? new Prisma.Decimal(0);
+    const creditTotal = totals._sum.credit ?? new Prisma.Decimal(0);
+
+    // ASSET/EXPENSE accounts carry a normal debit balance;
+    // LIABILITY/INCOME/EQUITY carry a normal credit balance.
+    const normalDebitBalance =
+      account.type === 'ASSET' || account.type === 'EXPENSE';
+    const balance = normalDebitBalance
+      ? debitTotal.minus(creditTotal)
+      : creditTotal.minus(debitTotal);
+
+    return {
+      ledgerAccountId,
+      type: account.type,
+      balance: balance.toString(),
+    };
   }
 
   // Admin-only transaction history — surfaced building the admin console:

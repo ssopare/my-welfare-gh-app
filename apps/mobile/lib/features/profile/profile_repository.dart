@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_client.dart';
@@ -27,7 +30,29 @@ class ProfileRepository {
       member: MemberDetail.fromJson(results[1].data as Map<String, dynamic>),
     );
   }
+
+  /// Uploads [imageFile] to [POST /upload/avatar] as multipart/form-data.
+  /// Returns the relative URL of the stored file (e.g. /uploads/avatars/uuid.jpg).
+  /// The caller is responsible for persisting the returned URL via
+  /// [AuthController.completeProfile].
+  Future<String> uploadAvatar(File imageFile) async {
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        imageFile.path,
+        filename: imageFile.path.split('/').last,
+      ),
+    });
+    final response = await _api.dio.post<Map<String, dynamic>>(
+      '/upload/avatar',
+      data: formData,
+      options: Options(contentType: 'multipart/form-data'),
+    );
+    final url = response.data?['url'] as String?;
+    if (url == null) throw Exception('Upload succeeded but no URL was returned');
+    return url;
+  }
 }
+
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
   return ProfileRepository(ref.watch(apiClientProvider));

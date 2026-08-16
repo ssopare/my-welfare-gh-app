@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LineChart,
   Scale,
+  Settings,
   ShieldCheck,
   Users,
   Wallet,
@@ -50,4 +51,5 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Reports", href: "/reports", icon: LineChart, adminOnly: true },
   { label: "Notifications", href: "/notifications", icon: Bell, adminOnly: true },
   { label: "Billing", href: "/billing", icon: Banknote, adminOnly: true },
+  { label: "Settings", href: "/settings", icon: Settings, adminOnly: true },
 ];

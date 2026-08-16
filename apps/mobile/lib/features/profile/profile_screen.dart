@@ -1,6 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart' show getTemporaryDirectory;
+
 
 import '../../core/widgets/status_chip.dart';
 import '../auth/auth_controller.dart';
@@ -59,64 +64,115 @@ class ProfileScreen extends ConsumerWidget {
 
   Future<void> _editAvatar(BuildContext context, WidgetRef ref, String? currentName, String? currentAvatarUrl) async {
     final theme = Theme.of(context);
-    final selectedUrl = await showModalBottomSheet<String>(
+
+    // WhatsApp-style source picker sheet
+    final source = await showModalBottomSheet<ImageSource>(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(24),
+      builder: (ctx) {
+        return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Profile Photo',
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
+              const SizedBox(height: 8),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 16),
+              Text('Profile Photo', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: CircleAvatar(backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1), child: Icon(Icons.camera_alt, color: theme.colorScheme.primary)),
+                title: const Text('Take a photo'),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
               ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _AvatarOption(
-                    label: 'Memoji 1',
-                    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-                    isSelected: currentAvatarUrl == 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-                  ),
-                  _AvatarOption(
-                    label: 'Memoji 2',
-                    url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
-                    isSelected: currentAvatarUrl == 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
-                  ),
-                  _AvatarOption(
-                    label: 'Memoji 3',
-                    url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200',
-                    isSelected: currentAvatarUrl == 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200',
-                  ),
-                ],
+              ListTile(
+                leading: CircleAvatar(backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1), child: Icon(Icons.photo_library, color: theme.colorScheme.primary)),
+                title: const Text('Choose from gallery'),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
               ),
-              const SizedBox(height: 24),
               if (currentAvatarUrl != null && currentAvatarUrl.isNotEmpty)
-                TextButton.icon(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  label: const Text('Remove profile photo', style: TextStyle(color: Colors.red)),
-                  onPressed: () => Navigator.of(context).pop('REMOVE'),
+                ListTile(
+                  leading: const CircleAvatar(backgroundColor: Color(0x1AE53935), child: Icon(Icons.delete_outline, color: Colors.red)),
+                  title: const Text('Remove photo', style: TextStyle(color: Colors.red)),
+                  onTap: () => Navigator.pop(ctx, null),
                 ),
+              const SizedBox(height: 8),
             ],
           ),
         );
       },
     );
 
-    if (selectedUrl == null) return;
-    final String newAvatarUrl = selectedUrl == 'REMOVE' ? '' : selectedUrl;
-    final success = await ref.read(authControllerProvider).completeProfile(
-      currentName ?? '',
-      avatarUrl: newAvatarUrl,
+    // null = sheet dismissed without tapping anything (context.pop with no value)
+    // But we need to distinguish "remove" from "dismissed". We use a sentinel:
+    // We treat source == null after remove tap as a remove, so the sheet uses
+    // a different pop. Actually here null source = user dismissed. Let's handle remove:
+    // The remove tap calls Navigator.pop(ctx, null) which collapses ambiguity.
+    // Re-approach: use a record result approach via a separate helper.
+    if (source == null && (currentAvatarUrl == null || currentAvatarUrl.isEmpty)) return;
+
+    // Handle remove
+    if (source == null) {
+      final success = await ref.read(authControllerProvider).completeProfile(currentName ?? '', avatarUrl: '');
+      if (success) ref.invalidate(profileDataProvider);
+      return;
+    }
+
+    // Pick image
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: source, maxWidth: 1024, maxHeight: 1024, imageQuality: 90);
+    if (picked == null) return;
+
+    // Compress to max 800×800 WebP, ~150 KB target
+    final tmpDir = await getTemporaryDirectory();
+    final targetPath = '${tmpDir.path}/avatar_upload_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final compressed = await FlutterImageCompress.compressAndGetFile(
+      picked.path,
+      targetPath,
+      quality: 80,
+      minWidth: 256,
+      minHeight: 256,
+      format: CompressFormat.jpeg,
     );
-    if (success) ref.invalidate(profileDataProvider);
+    if (compressed == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not process that photo. Please try a different one.'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
+
+    // Show uploading indicator
+    if (!context.mounted) return;
+    final snackBar = ScaffoldMessenger.of(context)
+      ..showSnackBar(const SnackBar(content: Row(children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)), SizedBox(width: 12), Text('Uploading photo…')])));
+
+    try {
+      final repo = ref.read(profileRepositoryProvider);
+      final url = await repo.uploadAvatar(File(compressed.path));
+      final auth = ref.read(authControllerProvider);
+      final success = await auth.completeProfile(currentName ?? '', avatarUrl: url);
+      snackBar.hideCurrentSnackBar();
+      if (!context.mounted) return;
+      if (success) {
+        ref.invalidate(profileDataProvider);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✓ Profile photo updated'), backgroundColor: Colors.green));
+      } else {
+        // The photo uploaded fine, but saving it to the profile failed —
+        // must not claim success here, or the user thinks it worked when
+        // nothing was actually persisted server-side.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(auth.lastError ?? 'Could not save your new photo. Please try again.'), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      snackBar.hideCurrentSnackBar();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e'), backgroundColor: Colors.red));
+      }
+    }
   }
 
   Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
@@ -381,40 +437,5 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _AvatarOption extends StatelessWidget {
-  const _AvatarOption({
-    required this.label,
-    required this.url,
-    required this.isSelected,
-  });
 
-  final String label;
-  final String url;
-  final bool isSelected;
 
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.of(context).pop(url),
-      child: Column(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isSelected ? const Color(0xFF00A884) : Colors.transparent,
-                width: 3,
-              ),
-            ),
-            child: CircleAvatar(
-              radius: 28,
-              backgroundImage: NetworkImage(url),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-}

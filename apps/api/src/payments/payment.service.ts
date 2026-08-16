@@ -118,7 +118,9 @@ export class PaymentService {
           organisationId: actor.organisationId,
           reference: intent.id,
         },
-        subaccount: settlement?.verified ? settlement.providerSubaccountCode : undefined,
+        subaccount: settlement?.verified
+          ? settlement.providerSubaccountCode
+          : undefined,
       });
 
       const providerReference = result.providerReference;

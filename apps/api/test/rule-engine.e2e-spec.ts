@@ -645,7 +645,7 @@ describe('Rule engine (e2e)', () => {
         .set('Authorization', `Bearer ${otherOrgAdmin.accessToken}`)
         .expect(404);
 
-       // The regular listActive endpoint must NOT show it yet — it's still
+      // The regular listActive endpoint must NOT show it yet — it's still
       // a draft.
       const activeRes = await request(app.getHttpServer())
         .get('/benefit-rules')
@@ -677,7 +677,7 @@ describe('Rule engine (e2e)', () => {
         .expect(201);
       const plan = planRes.body as RuleResponse;
 
-       // Activate it
+      // Activate it
       await request(app.getHttpServer())
         .post(`/contribution-plans/${plan.id}/activate`)
         .set('Authorization', `Bearer ${admin.accessToken}`)
@@ -688,10 +688,13 @@ describe('Rule engine (e2e)', () => {
       const compRes = await request(app.getHttpServer())
         .post(`/contribution-plans/${plan.id}/compute-obligation`)
         .set('Authorization', `Bearer ${admin.accessToken}`)
-        .send({ memberId: member.identity.memberId, periodDate: new Date().toISOString() })
+        .send({
+          memberId: member.identity.memberId,
+          periodDate: new Date().toISOString(),
+        })
         .expect(201);
-      
-      expect(compRes.body.amount).toBe('0.00');
+
+      expect((compRes.body as { amount: string }).amount).toBe('0.00');
     });
 
     it('creates, activates, and computes a minimum contribution plan', async () => {
@@ -724,10 +727,13 @@ describe('Rule engine (e2e)', () => {
       const compRes = await request(app.getHttpServer())
         .post(`/contribution-plans/${plan.id}/compute-obligation`)
         .set('Authorization', `Bearer ${admin.accessToken}`)
-        .send({ memberId: member.identity.memberId, periodDate: new Date().toISOString() })
+        .send({
+          memberId: member.identity.memberId,
+          periodDate: new Date().toISOString(),
+        })
         .expect(201);
-      
-      expect(compRes.body.amount).toBe('20');
+
+      expect((compRes.body as { amount: string }).amount).toBe('20');
     });
   });
 });

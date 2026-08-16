@@ -1,4 +1,4 @@
-// Entity and response-shape types shared between apps/api and apps/admin.
+﻿// Entity and response-shape types shared between apps/api and apps/admin.
 // Hand-written to mirror the actual Prisma models/DTO response shapes in
 // apps/api, not generated — kept in sync manually as the API evolves. A
 // future API contract change becomes a compile-time error in the admin
@@ -953,6 +953,12 @@ export interface AnonymousBallot {
   issueOptionId: string | null;
 }
 
+export interface ElectionResultEntry {
+  optionId: string;
+  label: string;
+  count: number;
+}
+
 export interface ElectionResultsResponse {
   electionId: string;
   title: string;
@@ -962,11 +968,28 @@ export interface ElectionResultsResponse {
   turnoutPercentage: number;
   quorumPercentage: number;
   quorumMet: boolean;
-  results: { optionId: string; label: string; count: number }[];
+  results: ElectionResultEntry[];
 }
 
-// ---------------------------------------------------------------------------
-// Notifications
+export interface CreateElectionInput {
+  title: string;
+  description?: string;
+  type: ElectionType;
+  isAnonymous?: boolean;
+  quorumPercentage?: number;
+  passPercentage?: number;
+  nominationStartsAt?: string;
+  nominationEndsAt?: string;
+  minNomineeTenureMonths?: number;
+  requireGoodStandingForNominee?: boolean;
+  requireNoArrearsForNominee?: boolean;
+  minSecondersRequired?: number;
+  startsAt: string;
+  endsAt: string;
+  options?: string[];
+  nomineeMemberIds?: string[];
+}
+
 // ---------------------------------------------------------------------------
 
 export const NOTIFICATION_TYPES = [
@@ -1292,4 +1315,12 @@ export interface UpdateFundControlPolicyInput {
   monthlyLimitValue: string;
   thresholdOneApproverValue: string;
   thresholdTwoApproversValue: string;
+}
+// ---------------------------------------------------------------------------
+// File Upload
+// ---------------------------------------------------------------------------
+
+export interface UploadResponse {
+  /** Relative URL of the uploaded file, e.g. /uploads/avatars/uuid.jpg */
+  url: string;
 }

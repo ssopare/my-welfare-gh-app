@@ -30,6 +30,6 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: WelfareApp()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Sign in'), findsWidgets);
+    expect(find.text('Login'), findsWidgets);
   });
 }

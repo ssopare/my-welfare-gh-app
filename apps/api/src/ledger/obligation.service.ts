@@ -316,7 +316,9 @@ export class ObligationService {
 
       if (computationType === 'voluntary') {
         applied = remaining;
-        newAmountValue = new Prisma.Decimal(obligation.amountPaid).plus(applied);
+        newAmountValue = new Prisma.Decimal(obligation.amountPaid).plus(
+          applied,
+        );
       } else if (computationType === 'minimum') {
         const outstanding = new Prisma.Decimal(obligation.amountValue).minus(
           obligation.amountPaid,
@@ -325,7 +327,9 @@ export class ObligationService {
 
         if (remaining.greaterThan(outstanding)) {
           applied = remaining;
-          newAmountValue = new Prisma.Decimal(obligation.amountPaid).plus(applied);
+          newAmountValue = new Prisma.Decimal(obligation.amountPaid).plus(
+            applied,
+          );
         } else {
           applied = remaining;
           newAmountValue = new Prisma.Decimal(obligation.amountValue);

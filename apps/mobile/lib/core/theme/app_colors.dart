@@ -41,7 +41,7 @@ class AppColors {
   static const borderDark = Color(0xFF262B3D);
 
   // Translucent colors for glassmorphism
-  static final glassWhite = Colors.white.withOpacity(0.55);
-  static final glassBorderLight = const Color(0xFFE2E8F0).withOpacity(0.65);
-  static final glassBorderDark = const Color(0xFF262B3D).withOpacity(0.6);
+  static final glassWhite = Colors.white.withValues(alpha: 0.55);
+  static final glassBorderLight = const Color(0xFFE2E8F0).withValues(alpha: 0.65);
+  static final glassBorderDark = const Color(0xFF262B3D).withValues(alpha: 0.6);
 }

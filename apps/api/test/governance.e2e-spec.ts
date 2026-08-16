@@ -37,6 +37,23 @@ interface RoleAssignmentResponse {
   termEnd: string | null;
 }
 
+interface ElectionResponse {
+  id: string;
+  nominees?: { id: string }[];
+  options?: { id: string; text: string }[];
+}
+
+interface NominationResponse {
+  id: string;
+}
+
+interface ElectionResultsResponse {
+  totalVotesCast: number;
+  results: { optionId: string; count: number }[];
+  turnoutPercentage: number;
+  quorumMet: boolean;
+}
+
 // Phase 1 post-roadmap: Governance (§8.3), Phase 1 scope per the roadmap
 // table — governance bodies, term limits, role vacancy handling.
 // Motions/minutes/votes and "vote of no confidence" (FR-GOV-03/04) are
@@ -64,13 +81,17 @@ describe('Governance (e2e)', () => {
   afterAll(async () => {
     for (const organisationId of createdOrgIds) {
       await prisma.withTenant(organisationId, (tx) =>
-        tx.anonymousBallot.deleteMany({ where: { election: { organisationId } } }),
+        tx.anonymousBallot.deleteMany({
+          where: { election: { organisationId } },
+        }),
       );
       await prisma.withTenant(organisationId, (tx) =>
         tx.publicBallot.deleteMany({ where: { election: { organisationId } } }),
       );
       await prisma.withTenant(organisationId, (tx) =>
-        tx.voterRegistry.deleteMany({ where: { election: { organisationId } } }),
+        tx.voterRegistry.deleteMany({
+          where: { election: { organisationId } },
+        }),
       );
       await prisma.withTenant(organisationId, (tx) =>
         tx.nominee.deleteMany({ where: { election: { organisationId } } }),
@@ -389,12 +410,22 @@ describe('Governance (e2e)', () => {
     it('runs the nomination, vetting, and voting pipeline for officer elections', async () => {
       const admin = await registerOrganisation('Election Pipeline Org');
       const nomineeUser = await joinOrganisation(admin.identity.organisationId);
-      const seconderUser = await joinOrganisation(admin.identity.organisationId);
+      const seconderUser = await joinOrganisation(
+        admin.identity.organisationId,
+      );
       const voterUser = await joinOrganisation(admin.identity.organisationId);
 
       // Make users active members
-      await setStatus(admin.accessToken, nomineeUser.identity.memberId, 'ACTIVE');
-      await setStatus(admin.accessToken, seconderUser.identity.memberId, 'ACTIVE');
+      await setStatus(
+        admin.accessToken,
+        nomineeUser.identity.memberId,
+        'ACTIVE',
+      );
+      await setStatus(
+        admin.accessToken,
+        seconderUser.identity.memberId,
+        'ACTIVE',
+      );
       await setStatus(admin.accessToken, voterUser.identity.memberId, 'ACTIVE');
 
       const starts = new Date();
@@ -419,7 +450,7 @@ describe('Governance (e2e)', () => {
           endsAt: ends.toISOString(),
         })
         .expect(201);
-      const election = electionRes.body;
+      const election = electionRes.body as ElectionResponse;
 
       // 2. Start Nomination Phase
       await request(app.getHttpServer())
@@ -437,7 +468,7 @@ describe('Governance (e2e)', () => {
           statement: 'I promise to serve the group with transparency.',
         })
         .expect(201);
-      const nomination = nominationRes.body;
+      const nomination = nominationRes.body as NominationResponse;
 
       // 4. Second the nomination
       await request(app.getHttpServer())
@@ -477,7 +508,8 @@ describe('Governance (e2e)', () => {
         .get(`/elections/${election.id}`)
         .set('Authorization', `Bearer ${voterUser.accessToken}`)
         .expect(200);
-      const nomineeId = electionDetailRes.body.nominees[0].id;
+      const electionDetail = electionDetailRes.body as ElectionResponse;
+      const nomineeId = electionDetail.nominees![0].id;
 
       // 8. Cast Votes
       await request(app.getHttpServer())
@@ -505,8 +537,11 @@ describe('Governance (e2e)', () => {
         .set('Authorization', `Bearer ${voterUser.accessToken}`)
         .expect(200);
 
-      expect(resultsRes.body.totalVotesCast).toBe(2);
-      expect(resultsRes.body.results.find((r: any) => r.optionId === nomineeId).count).toBe(2);
+      const results = resultsRes.body as ElectionResultsResponse;
+      expect(results.totalVotesCast).toBe(2);
+      expect(results.results.find((r) => r.optionId === nomineeId)!.count).toBe(
+        2,
+      );
     });
 
     it('manages issue referendums with public votes and verifies quorum', async () => {
@@ -529,14 +564,14 @@ describe('Governance (e2e)', () => {
           title: 'Welfare Rate Amendment Referendum',
           type: 'ISSUE',
           isAnonymous: false,
-          quorumPercentage: 60.00,
-          passPercentage: 50.00,
+          quorumPercentage: 60.0,
+          passPercentage: 50.0,
           startsAt: starts.toISOString(),
           endsAt: ends.toISOString(),
           options: ['YES', 'NO'],
         })
         .expect(201);
-      const election = electionRes.body;
+      const election = electionRes.body as ElectionResponse;
 
       // 2. Activate voting directly (Referendums bypass nominations)
       await request(app.getHttpServer())
@@ -550,8 +585,13 @@ describe('Governance (e2e)', () => {
         .get(`/elections/${election.id}`)
         .set('Authorization', `Bearer ${voter1.accessToken}`)
         .expect(200);
-      const yesOptionId = electionDetailRes.body.options.find((o: any) => o.text === 'YES').id;
-      const noOptionId = electionDetailRes.body.options.find((o: any) => o.text === 'NO').id;
+      const electionDetail = electionDetailRes.body as ElectionResponse;
+      const yesOptionId = electionDetail.options!.find(
+        (o) => o.text === 'YES',
+      )!.id;
+      const noOptionId = electionDetail.options!.find(
+        (o) => o.text === 'NO',
+      )!.id;
 
       // 3. Cast Votes
       await request(app.getHttpServer())
@@ -572,13 +612,18 @@ describe('Governance (e2e)', () => {
         .set('Authorization', `Bearer ${admin.accessToken}`)
         .expect(200);
 
-      expect(resultsRes.body.totalVotesCast).toBe(2);
-      expect(resultsRes.body.results.find((r: any) => r.optionId === yesOptionId).count).toBe(1);
-      expect(resultsRes.body.results.find((r: any) => r.optionId === noOptionId).count).toBe(1);
-      
+      const results = resultsRes.body as ElectionResultsResponse;
+      expect(results.totalVotesCast).toBe(2);
+      expect(
+        results.results.find((r) => r.optionId === yesOptionId)!.count,
+      ).toBe(1);
+      expect(
+        results.results.find((r) => r.optionId === noOptionId)!.count,
+      ).toBe(1);
+
       // Admin, voter1, voter2 are active members (3 total). Turnout is 2/3 = 66.67%. Quorum requirement is 60%.
-      expect(resultsRes.body.turnoutPercentage).toBeCloseTo(66.67, 1);
-      expect(resultsRes.body.quorumMet).toBe(true);
+      expect(results.turnoutPercentage).toBeCloseTo(66.67, 1);
+      expect(results.quorumMet).toBe(true);
     });
   });
 });

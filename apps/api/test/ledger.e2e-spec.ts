@@ -1286,7 +1286,7 @@ describe('Ledger (e2e)', () => {
   it('allocates payment correctly for a voluntary contribution plan', async () => {
     const admin = await registerOrganisation('Ledger Voluntary Org');
     const member = await joinOrganisation(admin.identity.organisationId);
-    
+
     // Set status to ACTIVE
     await request(app.getHttpServer())
       .patch(`/members/${member.identity.memberId}/status`)
@@ -1350,7 +1350,9 @@ describe('Ledger (e2e)', () => {
       .get(`/members/${member.identity.memberId}/obligations`)
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .expect(200);
-    const obUpdate = (openRes.body as ObligationResponse[]).find((o) => o.id === obligation.id)!;
+    const obUpdate = (openRes.body as ObligationResponse[]).find(
+      (o) => o.id === obligation.id,
+    )!;
     expect(obUpdate.amountValue).toBe('150');
     expect(obUpdate.amountPaid).toBe('150');
     expect(obUpdate.status).toBe('PAID');
@@ -1360,13 +1362,13 @@ describe('Ledger (e2e)', () => {
       .get(`/members/${member.identity.memberId}`)
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .expect(200);
-    expect(meRes.body.creditBalance).toBe('0');
+    expect((meRes.body as { creditBalance: string }).creditBalance).toBe('0');
   });
 
   it('allocates payment correctly for a minimum contribution plan', async () => {
     const admin = await registerOrganisation('Ledger Minimum Org');
     const member = await joinOrganisation(admin.identity.organisationId);
-    
+
     // Set status to ACTIVE
     await request(app.getHttpServer())
       .patch(`/members/${member.identity.memberId}/status`)
@@ -1430,7 +1432,9 @@ describe('Ledger (e2e)', () => {
       .get(`/members/${member.identity.memberId}/obligations`)
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .expect(200);
-    const obUpdate = (openRes.body as ObligationResponse[]).find((o) => o.id === obligation.id)!;
+    const obUpdate = (openRes.body as ObligationResponse[]).find(
+      (o) => o.id === obligation.id,
+    )!;
     expect(obUpdate.amountValue).toBe('50');
     expect(obUpdate.amountPaid).toBe('50');
     expect(obUpdate.status).toBe('PAID');
@@ -1440,6 +1444,6 @@ describe('Ledger (e2e)', () => {
       .get(`/members/${member.identity.memberId}`)
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .expect(200);
-    expect(meRes.body.creditBalance).toBe('0');
+    expect((meRes.body as { creditBalance: string }).creditBalance).toBe('0');
   });
 });

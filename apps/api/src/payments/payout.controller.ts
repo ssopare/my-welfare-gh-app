@@ -45,6 +45,7 @@ export class PayoutController {
 
   @Get('recipients')
   async listRecipients(@CurrentUser() user: AuthTokenPayload) {
+    await requirePermission(this.rbac, user, 'ledger', 'disburse');
     return this.payoutService.listPayoutRecipients(user.organisationId);
   }
 
@@ -59,6 +60,7 @@ export class PayoutController {
 
   @Get('policy')
   async getPolicy(@CurrentUser() user: AuthTokenPayload) {
+    await requireAdmin(this.rbac, user);
     return this.payoutService.getFundControlPolicy(user.organisationId);
   }
 
@@ -68,7 +70,11 @@ export class PayoutController {
     @Body() dto: CreatePayoutRequestDto,
   ) {
     await requirePermission(this.rbac, user, 'ledger', 'disburse');
-    return this.payoutService.createPayoutRequest(user.organisationId, user.memberId, dto);
+    return this.payoutService.createPayoutRequest(
+      user.organisationId,
+      user.memberId,
+      dto,
+    );
   }
 
   @Get('requests')
@@ -84,6 +90,11 @@ export class PayoutController {
     @Body() dto: SubmitPayoutApprovalDto,
   ) {
     await requirePermission(this.rbac, user, 'ledger', 'disburse');
-    return this.payoutService.approvePayoutRequest(user.organisationId, user.memberId, id, dto);
+    return this.payoutService.approvePayoutRequest(
+      user.organisationId,
+      user.memberId,
+      id,
+      dto,
+    );
   }
 }

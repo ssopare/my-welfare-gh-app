@@ -89,7 +89,10 @@ export class RuleEngineService {
         );
       }
 
-      const amount = plan.computationType === 'voluntary' ? '0.00' : plan.amountValue.toString();
+      const amount =
+        plan.computationType === 'voluntary'
+          ? '0.00'
+          : plan.amountValue.toString();
       return {
         planId: plan.id,
         memberId,

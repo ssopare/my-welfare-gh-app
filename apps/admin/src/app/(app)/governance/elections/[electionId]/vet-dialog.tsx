@@ -61,7 +61,7 @@ export function VetNominationDialog({ nomination, electionId, nomineeName }: Vet
               id="vet-status"
               name="status"
               value={status}
-              onChange={(e) => setStatus(e.target.value as any)}
+              onChange={(e) => setStatus(e.target.value as "APPROVED" | "REJECTED")}
               className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:bg-zinc-950"
             >
               <option value="APPROVED">Approve / Promote to Ballot</option>

@@ -3,7 +3,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '../../generated/prisma/client';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { requireAdmin } from '../common/access.util';
 import { PrismaService } from '../prisma/prisma.service';
@@ -170,12 +169,17 @@ export class GovernanceService {
           description: dto.description,
           type: dto.type,
           isAnonymous: dto.isAnonymous ?? true,
-          quorumPercentage: dto.quorumPercentage ?? 50.00,
-          passPercentage: dto.passPercentage ?? 50.00,
-          nominationStartsAt: dto.nominationStartsAt ? new Date(dto.nominationStartsAt) : null,
-          nominationEndsAt: dto.nominationEndsAt ? new Date(dto.nominationEndsAt) : null,
+          quorumPercentage: dto.quorumPercentage ?? 50.0,
+          passPercentage: dto.passPercentage ?? 50.0,
+          nominationStartsAt: dto.nominationStartsAt
+            ? new Date(dto.nominationStartsAt)
+            : null,
+          nominationEndsAt: dto.nominationEndsAt
+            ? new Date(dto.nominationEndsAt)
+            : null,
           minNomineeTenureMonths: dto.minNomineeTenureMonths ?? 0,
-          requireGoodStandingForNominee: dto.requireGoodStandingForNominee ?? true,
+          requireGoodStandingForNominee:
+            dto.requireGoodStandingForNominee ?? true,
           requireNoArrearsForNominee: dto.requireNoArrearsForNominee ?? true,
           minSecondersRequired: dto.minSecondersRequired ?? 0,
           startsAt: new Date(dto.startsAt),
@@ -233,11 +237,14 @@ export class GovernanceService {
   async transitionElectionStatus(
     actor: AuthTokenPayload,
     electionId: string,
-    status: 'DRAFT' | 'NOMINATION' | 'VETTING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED',
+    status:
+      'DRAFT' | 'NOMINATION' | 'VETTING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED',
   ) {
     await requireAdmin(this.rbac, actor);
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
-      const election = await tx.election.findUnique({ where: { id: electionId } });
+      const election = await tx.election.findUnique({
+        where: { id: electionId },
+      });
       if (!election) {
         throw new NotFoundException('Election not found');
       }
@@ -273,7 +280,9 @@ export class GovernanceService {
 
       // Automated Vetting checks
       if (election.minNomineeTenureMonths > 0) {
-        const diffTime = Math.abs(new Date().getTime() - nominee.createdAt.getTime());
+        const diffTime = Math.abs(
+          new Date().getTime() - nominee.createdAt.getTime(),
+        );
         const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30));
         if (diffMonths < election.minNomineeTenureMonths) {
           throw new BadRequestException(
@@ -282,8 +291,13 @@ export class GovernanceService {
         }
       }
 
-      if (election.requireGoodStandingForNominee && nominee.status !== 'ACTIVE') {
-        throw new BadRequestException('Nominee must be in ACTIVE good standing');
+      if (
+        election.requireGoodStandingForNominee &&
+        nominee.status !== 'ACTIVE'
+      ) {
+        throw new BadRequestException(
+          'Nominee must be in ACTIVE good standing',
+        );
       }
 
       if (election.requireNoArrearsForNominee) {
@@ -324,7 +338,9 @@ export class GovernanceService {
         throw new BadRequestException('Election is not in NOMINATION phase');
       }
       if (nomination.seconders.includes(actor.memberId)) {
-        throw new BadRequestException('You have already seconded this nomination');
+        throw new BadRequestException(
+          'You have already seconded this nomination',
+        );
       }
 
       const updatedSeconders = [...nomination.seconders, actor.memberId];
@@ -402,7 +418,9 @@ export class GovernanceService {
         },
       });
       if (alreadyVoted) {
-        throw new BadRequestException('You have already voted in this election');
+        throw new BadRequestException(
+          'You have already voted in this election',
+        );
       }
 
       // Validate option selection
@@ -414,7 +432,9 @@ export class GovernanceService {
           where: { id: dto.nomineeId, electionId },
         });
         if (!nomineeExists) {
-          throw new BadRequestException('Selected nominee is not on the ballot');
+          throw new BadRequestException(
+            'Selected nominee is not on the ballot',
+          );
         }
       } else {
         if (!dto.issueOptionId) {
@@ -479,13 +499,12 @@ export class GovernanceService {
         where: { electionId },
       });
 
-      const turnoutPercentage = totalEligible > 0
-        ? (totalVotesCast / totalEligible) * 100
-        : 0;
+      const turnoutPercentage =
+        totalEligible > 0 ? (totalVotesCast / totalEligible) * 100 : 0;
 
       const quorumMet = turnoutPercentage >= Number(election.quorumPercentage);
 
-      let results: { optionId: string; label: string; count: number }[] = [];
+      const results: { optionId: string; label: string; count: number }[] = [];
 
       if (election.type === 'OFFICER') {
         const nominees = await tx.nominee.findMany({

@@ -183,32 +183,34 @@ class _BallotScreenState extends ConsumerState<BallotScreen> {
                           return const Center(child: Text('No approved candidates available.'));
                         }
 
-                        return Column(
-                          children: nominees.map((nominee) {
-                            final String id = nominee['id'] as String;
-                            final String memberId = nominee['memberId'] as String;
-                            final String? manifesto = nominee['manifesto'] as String?;
+                        return RadioGroup<String>(
+                          groupValue: _selectedNomineeId,
+                          onChanged: (val) {
+                            setState(() => _selectedNomineeId = val);
+                          },
+                          child: Column(
+                            children: nominees.map((nominee) {
+                              final String id = nominee['id'] as String;
+                              final String memberId = nominee['memberId'] as String;
+                              final String? manifesto = nominee['manifesto'] as String?;
 
-                            // Resolve name from members list
-                            final member = members.firstWhere((m) => m['id'] == memberId, orElse: () => null);
-                            final String name = member != null
-                                ? (member['account']['name'] as String? ?? member['account']['phoneNumber'] as String)
-                                : 'Candidate';
+                              // Resolve name from members list
+                              final member = members.firstWhere((m) => m['id'] == memberId, orElse: () => null);
+                              final String name = member != null
+                                  ? (member['account']['name'] as String? ?? member['account']['phoneNumber'] as String)
+                                  : 'Candidate';
 
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              child: RadioListTile<String>(
-                                value: id,
-                                groupValue: _selectedNomineeId,
-                                title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: manifesto != null ? Text(manifesto) : null,
-                                onChanged: (val) {
-                                  setState(() => _selectedNomineeId = val);
-                                },
-                              ),
-                            );
-                          }).toList(),
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                child: RadioListTile<String>(
+                                  value: id,
+                                  title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: manifesto != null ? Text(manifesto) : null,
+                                ),
+                              );
+                            }).toList(),
+                          ),
                         );
                       },
                       loading: () => const Center(child: CircularProgressIndicator()),
@@ -216,24 +218,26 @@ class _BallotScreenState extends ConsumerState<BallotScreen> {
                     )
                   else
                     // Issue Options list
-                    Column(
-                      children: options.map((option) {
-                        final String id = option['id'] as String;
-                        final String text = option['text'] as String;
+                    RadioGroup<String>(
+                      groupValue: _selectedIssueOptionId,
+                      onChanged: (val) {
+                        setState(() => _selectedIssueOptionId = val);
+                      },
+                      child: Column(
+                        children: options.map((option) {
+                          final String id = option['id'] as String;
+                          final String text = option['text'] as String;
 
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: RadioListTile<String>(
-                            value: id,
-                            groupValue: _selectedIssueOptionId,
-                            title: Text(text, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            onChanged: (val) {
-                              setState(() => _selectedIssueOptionId = val);
-                            },
-                          ),
-                        );
-                      }).toList(),
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: RadioListTile<String>(
+                              value: id,
+                              title: Text(text, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     ),
 
                   const SizedBox(height: 32),

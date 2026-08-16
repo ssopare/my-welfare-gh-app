@@ -35,7 +35,9 @@ export class MembershipService {
         where: status ? { status: status as never } : undefined,
         orderBy: { createdAt: 'desc' },
         include: {
-          account: { select: { phoneNumber: true, name: true, avatarUrl: true } },
+          account: {
+            select: { phoneNumber: true, name: true, avatarUrl: true },
+          },
           chapter: true,
         },
       }),
@@ -50,7 +52,9 @@ export class MembershipService {
           dependants: true,
           statusChanges: { orderBy: { changedAt: 'desc' } },
           chapter: true,
-          account: { select: { phoneNumber: true, name: true, avatarUrl: true } },
+          account: {
+            select: { phoneNumber: true, name: true, avatarUrl: true },
+          },
         },
       });
       if (!member) {
@@ -74,7 +78,9 @@ export class MembershipService {
           dependants: true,
           statusChanges: { orderBy: { changedAt: 'desc' } },
           chapter: true,
-          account: { select: { phoneNumber: true, name: true, avatarUrl: true } },
+          account: {
+            select: { phoneNumber: true, name: true, avatarUrl: true },
+          },
         },
       });
       if (!member) {
@@ -94,7 +100,7 @@ export class MembershipService {
       where: { id: actor.sub },
       data: {
         name: dto.name,
-        avatarUrl: dto.avatarUrl !== undefined ? dto.avatarUrl : undefined,
+        avatarUrl: dto.avatarUrl,
       },
     });
   }

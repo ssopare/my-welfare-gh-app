@@ -105,17 +105,13 @@ export function ElectionTab({ elections }: ElectionTabProps) {
             return (
               <TableRow key={election.id}>
                 <TableCell className="font-medium">
-                  {election.type === "OFFICER" ? (
-                    <Link
-                      href={`/governance/elections/${election.id}`}
-                      className="flex items-center gap-1.5 hover:underline text-indigo-600 dark:text-indigo-400"
-                    >
-                      {election.title}
-                      <ChevronRight className="size-3.5" aria-hidden />
-                    </Link>
-                  ) : (
-                    <span className="text-foreground">{election.title}</span>
-                  )}
+                  <Link
+                    href={`/governance/elections/${election.id}`}
+                    className="flex items-center gap-1.5 hover:underline text-indigo-600 dark:text-indigo-400"
+                  >
+                    {election.title}
+                    <ChevronRight className="size-3.5" aria-hidden />
+                  </Link>
                 </TableCell>
                 <TableCell>
                   <span className="text-xs font-semibold tracking-wide uppercase text-muted-foreground">
@@ -161,15 +157,14 @@ export function ElectionTab({ elections }: ElectionTabProps) {
                         Cancel
                       </Button>
                     )}
-                    {(election.status === "ACTIVE" || election.status === "COMPLETED") && (
-                      <Link href={`/governance/elections/${election.id}`}>
-                        <Button size="xs" variant="outline">
-                          View Live Results
-                        </Button>
-                      </Link>
-                    )}
+                    <Link href={`/governance/elections/${election.id}`}>
+                      <Button size="xs" variant="outline">
+                        {election.status === "ACTIVE" || election.status === "COMPLETED" ? "Live Results" : "Manage"}
+                      </Button>
+                    </Link>
                   </div>
                 </TableCell>
+
               </TableRow>
             );
           })}

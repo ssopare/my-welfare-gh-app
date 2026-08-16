@@ -68,7 +68,7 @@ export function NewElectionDialog() {
                 id="election-type"
                 name="type"
                 value={type}
-                onChange={(e) => setType(e.target.value as any)}
+                onChange={(e) => setType(e.target.value as "OFFICER" | "ISSUE")}
                 className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:bg-zinc-950"
               >
                 <option value="OFFICER">Officer Election</option>

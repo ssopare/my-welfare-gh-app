@@ -18,6 +18,7 @@ import { RoleModule } from './rbac/role.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { RuleEngineModule } from './rule-engine/rule-engine.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { UploadModule } from './upload/upload.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     SubscriptionsModule,
     OrganisationModule,
     BudgetModule,
+    UploadModule,
   ],
   controllers: [AppController],
   providers: [AppService],

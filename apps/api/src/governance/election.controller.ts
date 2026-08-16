@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -35,7 +43,9 @@ export class ElectionController {
   transitionElectionStatus(
     @CurrentUser() user: AuthTokenPayload,
     @Param('id') id: string,
-    @Body('status') status: 'DRAFT' | 'NOMINATION' | 'VETTING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED',
+    @Body('status')
+    status:
+      'DRAFT' | 'NOMINATION' | 'VETTING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED',
   ) {
     return this.governance.transitionElectionStatus(user, id, status);
   }

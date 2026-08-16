@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, BadgeCheck, BarChart3, Calendar, Check, Info, ShieldAlert, Users, Vote, X } from "lucide-react";
+import { ArrowLeft, BadgeCheck, BarChart3, Calendar, Info, ShieldAlert, Users } from "lucide-react";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { apiFetch, apiFetchOrNull } from "@/lib/api-client";
 import { requireSession } from "@/lib/session";
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { VetNominationDialog } from "./vet-dialog";
+import { ResultsChart } from "./results-chart";
+import { LifecycleActions } from "./lifecycle-actions";
 
 export const metadata: Metadata = {
   title: "Election Details — Welfare Platform",
@@ -61,9 +63,15 @@ export default async function ElectionDetailPage({ params }: PageProps) {
       <DashboardHeader
         title={election.title}
         subtitle={election.description ?? "Election details, timeline, and voting metrics."}
-        icon={Vote}
+        icon={Users}
         theme="indigo"
       />
+
+      {/* ── Lifecycle Actions Panel ── */}
+      <div className="rounded-xl border border-glass-border bg-glass-card/35 backdrop-blur-md p-6">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Election Lifecycle</h3>
+        <LifecycleActions electionId={electionId} currentStatus={election.status} />
+      </div>
 
       {/* Grid containing Details and Results */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -111,64 +119,18 @@ export default async function ElectionDetailPage({ params }: PageProps) {
         <div className="md:col-span-2 rounded-xl border border-glass-border bg-glass-card/35 backdrop-blur-md p-6 flex flex-col gap-4">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
             <BarChart3 className="size-4 text-indigo-500" />
-            Live Turnout & Results
+            Live Turnout &amp; Results
           </h3>
 
           {!results ? (
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-12 text-center h-full">
               <Info className="size-5 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                Results will be available once the election enters the **ACTIVE** voting phase.
+                Results will be available once the election enters the <strong>ACTIVE</strong> voting phase.
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-6">
-              {/* Turnout metrics */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="rounded-lg bg-zinc-50/50 p-4 dark:bg-zinc-950/20">
-                  <span className="text-xs text-muted-foreground">Total Cast</span>
-                  <p className="text-xl font-bold mt-1 text-foreground">{results.totalVotesCast}</p>
-                </div>
-                <div className="rounded-lg bg-zinc-50/50 p-4 dark:bg-zinc-950/20">
-                  <span className="text-xs text-muted-foreground">Turnout Rate</span>
-                  <p className="text-xl font-bold mt-1 text-foreground">
-                    {results.turnoutPercentage.toFixed(1)}%
-                  </p>
-                </div>
-                <div className="rounded-lg bg-zinc-50/50 p-4 dark:bg-zinc-950/20">
-                  <span className="text-xs text-muted-foreground">Quorum Met?</span>
-                  <div className="flex items-center gap-1 mt-1">
-                    {results.quorumMet ? (
-                      <BadgeCheck className="size-5 text-green-500" />
-                    ) : (
-                      <ShieldAlert className="size-5 text-amber-500" />
-                    )}
-                    <span className="font-semibold text-sm">
-                      {results.quorumMet ? "PASSED" : "PENDING"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Vote Count list with styled progress bars */}
-              <div className="flex flex-col gap-4">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Vote distribution</h4>
-                {results.results.map((r) => {
-                  const percent = results!.totalVotesCast > 0 ? (r.count / results!.totalVotesCast) * 100 : 0;
-                  return (
-                    <div key={r.optionId} className="flex flex-col gap-1.5">
-                      <div className="flex justify-between text-sm">
-                        <span className="font-medium text-foreground">{r.label}</span>
-                        <span className="text-muted-foreground font-semibold">{r.count} vote(s) ({percent.toFixed(1)}%)</span>
-                      </div>
-                      <div className="h-2 w-full rounded-full bg-zinc-100 dark:bg-zinc-900 overflow-hidden">
-                        <div className="h-full bg-indigo-600 dark:bg-indigo-500 rounded-full transition-all duration-500" style={{ width: `${percent}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <ResultsChart results={results} />
           )}
         </div>
       </div>

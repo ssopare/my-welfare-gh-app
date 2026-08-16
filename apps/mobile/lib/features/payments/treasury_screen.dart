@@ -507,7 +507,7 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
                 return const Text('Add a verified recipient first before requesting payouts.');
               }
               return DropdownButtonFormField<PayoutRecipientModel>(
-                value: _selectedRecipient,
+                initialValue: _selectedRecipient,
                 decoration: const InputDecoration(
                   labelText: 'Recipient',
                   border: OutlineInputBorder(),
@@ -528,7 +528,7 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
           funds.when(
             data: (items) {
               return DropdownButtonFormField<Fund>(
-                value: _selectedFund,
+                initialValue: _selectedFund,
                 decoration: const InputDecoration(
                   labelText: 'Deduct From Fund',
                   border: OutlineInputBorder(),

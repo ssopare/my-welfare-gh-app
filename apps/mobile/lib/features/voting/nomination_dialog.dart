@@ -222,7 +222,7 @@ class _NominationDialogState extends ConsumerState<NominationDialog> {
                     membersAsync.when(
                       data: (members) {
                         return DropdownButtonFormField<String>(
-                          value: _selectedMemberId,
+                          initialValue: _selectedMemberId,
                           decoration: InputDecoration(
                             labelText: 'Select Nominee',
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
