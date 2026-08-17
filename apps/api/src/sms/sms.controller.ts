@@ -1,15 +1,10 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  UseGuards,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Query } from '@nestjs/common';
 import { SmsService } from './sms.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthTokenPayload } from '../auth/auth.service';
+import { RbacService } from '../rbac/rbac.service';
+import { requireAdmin } from '../common/access.util';
 import {
   SendTestSmsDto,
   BroadcastSmsDto,
@@ -17,32 +12,41 @@ import {
   VerifyOtpDto,
 } from './dto/sms.dto';
 
+// Every route here either costs real money (a paid SMS gateway dispatch)
+// or reads phone numbers + message content — admin-gated uniformly, same
+// bar as settlement-account/payout-policy elsewhere in this codebase.
+// SmsModule already imported RbacModule for this from the start; it just
+// never actually injected RbacService anywhere, so nothing was enforced.
 @Controller('sms')
+@UseGuards(JwtAuthGuard)
 export class SmsController {
-  constructor(private readonly smsService: SmsService) {}
+  constructor(
+    private readonly smsService: SmsService,
+    private readonly rbac: RbacService,
+  ) {}
 
   @Get('balances')
-  @UseGuards(JwtAuthGuard)
-  getBalances() {
+  async getBalances(@CurrentUser() user: AuthTokenPayload) {
+    await requireAdmin(this.rbac, user);
     return this.smsService.getGatewaySummary();
   }
 
   @Get('logs')
-  @UseGuards(JwtAuthGuard)
-  getLogs(
+  async getLogs(
     @CurrentUser() user: AuthTokenPayload,
     @Query('limit') limit?: string,
   ) {
+    await requireAdmin(this.rbac, user);
     const take = limit ? Math.min(Number(limit), 100) : 50;
     return this.smsService.getLogs(user.organisationId, take);
   }
 
   @Post('test-send')
-  @UseGuards(JwtAuthGuard)
-  testSend(
+  async testSend(
     @CurrentUser() user: AuthTokenPayload,
     @Body() dto: SendTestSmsDto,
   ) {
+    await requireAdmin(this.rbac, user);
     return this.smsService.sendSms({
       to: dto.phoneNumber,
       message: dto.message,
@@ -52,11 +56,11 @@ export class SmsController {
   }
 
   @Post('broadcast')
-  @UseGuards(JwtAuthGuard)
-  broadcast(
+  async broadcast(
     @CurrentUser() user: AuthTokenPayload,
     @Body() dto: BroadcastSmsDto,
   ) {
+    await requireAdmin(this.rbac, user);
     return this.smsService.broadcastSms(
       user.organisationId,
       dto.message,
@@ -64,19 +68,29 @@ export class SmsController {
     );
   }
 
+  // Previously unauthenticated entirely — no guard, and organisationId
+  // came from an unauthenticated query param (defaulting to the literal
+  // string 'default-org' if omitted), meaning anyone on the internet
+  // could trigger a real, billed SMS to any number and attribute the
+  // cost/log entry to any organisation. Nothing in the actual app calls
+  // this today (OTP login stays disabled — see AuthService), so locking
+  // it to an authenticated admin closes the hole without breaking any
+  // real caller.
   @Post('send-otp')
-  sendOtp(
+  async sendOtp(
+    @CurrentUser() user: AuthTokenPayload,
     @Body() dto: SendOtpDto,
-    @Query('organisationId') organisationId?: string,
   ) {
-    return this.smsService.sendOtp(
-      organisationId || 'default-org',
-      dto.phoneNumber,
-    );
+    await requireAdmin(this.rbac, user);
+    return this.smsService.sendOtp(user.organisationId, dto.phoneNumber);
   }
 
   @Post('verify-otp')
-  verifyOtp(@Body() dto: VerifyOtpDto) {
+  async verifyOtp(
+    @CurrentUser() user: AuthTokenPayload,
+    @Body() dto: VerifyOtpDto,
+  ) {
+    await requireAdmin(this.rbac, user);
     const valid = this.smsService.verifyOtp(dto.phoneNumber, dto.code);
     return { valid };
   }

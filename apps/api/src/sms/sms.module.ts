@@ -7,10 +7,19 @@ import { HubtelSmsProvider } from './providers/hubtel-sms.provider';
 import { MockSmsProvider } from './providers/mock-sms.provider';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RbacModule } from '../rbac/rbac.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Global()
 @Module({
-  imports: [PrismaModule, RbacModule],
+  // AuthModule is needed for JwtAuthGuard (SmsController is
+  // @UseGuards(JwtAuthGuard) class-wide) — JwtAuthGuard depends on
+  // JwtService, which only AuthModule's JwtModule.register() provides;
+  // without this import, Nest can't resolve it and every /sms/* route
+  // throws at request time. AuthModule doesn't import SmsModule anywhere
+  // in its own graph (SmsService reaches NotificationService only via
+  // SmsModule's @Global() export, not an import edge), so this doesn't
+  // create a cycle.
+  imports: [PrismaModule, RbacModule, AuthModule],
   controllers: [SmsController],
   providers: [
     ArkeselSmsProvider,

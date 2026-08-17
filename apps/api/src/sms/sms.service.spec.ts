@@ -1,95 +1,109 @@
 import { SmsService } from './sms.service';
-import { ArkeselSmsProvider } from './providers/arkesel-sms.provider';
-import { MnotifySmsProvider } from './providers/mnotify-sms.provider';
-import { HubtelSmsProvider } from './providers/hubtel-sms.provider';
-import { MockSmsProvider } from './providers/mock-sms.provider';
+import type { ArkeselSmsProvider } from './providers/arkesel-sms.provider';
+import type { MnotifySmsProvider } from './providers/mnotify-sms.provider';
+import type { HubtelSmsProvider } from './providers/hubtel-sms.provider';
+import type { MockSmsProvider } from './providers/mock-sms.provider';
+import type { SmsProvider } from './providers/sms-provider.interface';
+import type { PrismaService } from '../prisma/prisma.service';
+
+// Mocked against the plain SmsProvider interface, not the concrete
+// classes — the classes carry a private `logger` field, which breaks
+// structural typing for a plain object literal and previously forced an
+// `as any` cast on every mock here. SmsService's constructor parameter
+// types (ArkeselSmsProvider, etc.) still accept these at the call site
+// below since only the constructor's declared *parameter* type matters
+// for the call, not this variable's own declared type.
+type MockProvider = jest.Mocked<SmsProvider>;
+
+function buildMockProvider(
+  name: SmsProvider['name'],
+  tier: number,
+): MockProvider {
+  return {
+    name,
+    tier,
+    isConfigured: jest.fn().mockReturnValue(true),
+    getBalance: jest.fn(),
+    sendSms: jest.fn(),
+  };
+}
 
 describe('SmsService (Multi-Tier Failover Engine)', () => {
   let smsService: SmsService;
-  let mockPrisma: any;
-  let mockArkesel: jest.Mocked<ArkeselSmsProvider>;
-  let mockMnotify: jest.Mocked<MnotifySmsProvider>;
-  let mockHubtel: jest.Mocked<HubtelSmsProvider>;
-  let mockMockProvider: jest.Mocked<MockSmsProvider>;
+  let smsLogCreate: jest.Mock;
+  let mockPrisma: Pick<PrismaService, 'withTenant'>;
+  let mockArkesel: MockProvider;
+  let mockMnotify: MockProvider;
+  let mockHubtel: MockProvider;
+  let mockMockProvider: MockProvider;
 
   beforeEach(() => {
-    mockPrisma = {
+    smsLogCreate = jest.fn().mockResolvedValue({ id: 'log-1' });
+    const tx = {
       smsLog: {
-        create: jest.fn().mockResolvedValue({ id: 'log-1' }),
+        create: smsLogCreate,
         findMany: jest.fn().mockResolvedValue([]),
       },
-      member: {
-        findMany: jest.fn().mockResolvedValue([]),
-      },
+      member: { findMany: jest.fn().mockResolvedValue([]) },
     };
+    // Real PrismaService.withTenant runs the callback inside a
+    // SET-LOCAL-app.tenant_id transaction — the mock just invokes it
+    // directly against a fake tx, which is all SmsService's own logic
+    // (never PrismaService's) needs exercised here.
+    mockPrisma = {
+      withTenant: jest.fn(
+        (_organisationId: string, callback: (tx: unknown) => unknown) =>
+          Promise.resolve(callback(tx)),
+      ),
+    } as Pick<PrismaService, 'withTenant'>;
 
-    mockArkesel = {
-      name: 'ARKESEL',
+    mockArkesel = buildMockProvider('ARKESEL', 1);
+    mockArkesel.getBalance.mockResolvedValue({
+      provider: 'ARKESEL',
+      displayName: 'Arkesel (Primary)',
+      isConfigured: true,
+      smsUnits: 1500,
+      mainBalanceValue: 'GHS 45.00',
+      status: 'ACTIVE',
       tier: 1,
-      isConfigured: jest.fn().mockReturnValue(true),
-      getBalance: jest.fn().mockResolvedValue({
-        provider: 'ARKESEL',
-        displayName: 'Arkesel (Primary)',
-        isConfigured: true,
-        smsUnits: 1500,
-        mainBalanceValue: 'GHS 45.00',
-        status: 'ACTIVE',
-        tier: 1,
-      }),
-      sendSms: jest.fn(),
-    } as any;
+    });
 
-    mockMnotify = {
-      name: 'MNOTIFY',
+    mockMnotify = buildMockProvider('MNOTIFY', 2);
+    mockMnotify.getBalance.mockResolvedValue({
+      provider: 'MNOTIFY',
+      displayName: 'mNotify (Fallback)',
+      isConfigured: true,
+      smsUnits: 800,
+      status: 'ACTIVE',
       tier: 2,
-      isConfigured: jest.fn().mockReturnValue(true),
-      getBalance: jest.fn().mockResolvedValue({
-        provider: 'MNOTIFY',
-        displayName: 'mNotify (Fallback)',
-        isConfigured: true,
-        smsUnits: 800,
-        status: 'ACTIVE',
-        tier: 2,
-      }),
-      sendSms: jest.fn(),
-    } as any;
+    });
 
-    mockHubtel = {
-      name: 'HUBTEL',
+    mockHubtel = buildMockProvider('HUBTEL', 3);
+    mockHubtel.getBalance.mockResolvedValue({
+      provider: 'HUBTEL',
+      displayName: 'Hubtel (Enterprise)',
+      isConfigured: true,
+      smsUnits: 5000,
+      status: 'ACTIVE',
       tier: 3,
-      isConfigured: jest.fn().mockReturnValue(true),
-      getBalance: jest.fn().mockResolvedValue({
-        provider: 'HUBTEL',
-        displayName: 'Hubtel (Enterprise)',
-        isConfigured: true,
-        smsUnits: 5000,
-        status: 'ACTIVE',
-        tier: 3,
-      }),
-      sendSms: jest.fn(),
-    } as any;
+    });
 
-    mockMockProvider = {
-      name: 'MOCK',
+    mockMockProvider = buildMockProvider('MOCK', 99);
+    mockMockProvider.getBalance.mockResolvedValue({
+      provider: 'MOCK',
+      displayName: 'Development Simulator',
+      isConfigured: true,
+      smsUnits: 1000,
+      status: 'ACTIVE',
       tier: 99,
-      isConfigured: jest.fn().mockReturnValue(true),
-      getBalance: jest.fn().mockResolvedValue({
-        provider: 'MOCK',
-        displayName: 'Development Simulator',
-        isConfigured: true,
-        smsUnits: 1000,
-        status: 'ACTIVE',
-        tier: 99,
-      }),
-      sendSms: jest.fn(),
-    } as any;
+    });
 
     smsService = new SmsService(
-      mockPrisma,
-      mockArkesel,
-      mockMnotify,
-      mockHubtel,
-      mockMockProvider,
+      mockPrisma as PrismaService,
+      mockArkesel as unknown as ArkeselSmsProvider,
+      mockMnotify as unknown as MnotifySmsProvider,
+      mockHubtel as unknown as HubtelSmsProvider,
+      mockMockProvider as unknown as MockSmsProvider,
     );
   });
 
@@ -113,7 +127,8 @@ describe('SmsService (Multi-Tier Failover Engine)', () => {
     expect(mockArkesel.sendSms).toHaveBeenCalledTimes(1);
     expect(mockMnotify.sendSms).not.toHaveBeenCalled();
     expect(mockHubtel.sendSms).not.toHaveBeenCalled();
-    expect(mockPrisma.smsLog.create).toHaveBeenCalledWith({
+    expect(smsLogCreate).toHaveBeenCalledWith({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- expect.objectContaining's @types/jest signature returns `any`
       data: expect.objectContaining({
         organisationId: 'org-1',
         phoneNumber: '0244111222',
@@ -153,7 +168,8 @@ describe('SmsService (Multi-Tier Failover Engine)', () => {
     expect(mockArkesel.sendSms).toHaveBeenCalledTimes(1);
     expect(mockMnotify.sendSms).toHaveBeenCalledTimes(1);
     expect(mockHubtel.sendSms).not.toHaveBeenCalled();
-    expect(mockPrisma.smsLog.create).toHaveBeenCalledWith({
+    expect(smsLogCreate).toHaveBeenCalledWith({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- expect.objectContaining's @types/jest signature returns `any`
       data: expect.objectContaining({
         organisationId: 'org-1',
         phoneNumber: '0244111222',

@@ -9,6 +9,15 @@ import type {
 const MNOTIFY_SEND_URL = 'https://api.mnotify.com/api/sms/quick';
 const MNOTIFY_BALANCE_URL = 'https://api.mnotify.com/api/balance/sms';
 
+// mNotify's documented API only accepts the key as a `?key=` query
+// parameter — there's no header-based auth option, unlike Arkesel
+// ('api-key' header) or Hubtel (Basic Auth header). That's a genuinely
+// weaker key-handling posture (a query string can end up in proxy/access
+// logs a header wouldn't), but it's not something this code can fix
+// unilaterally — it's mNotify's own API contract. Flagging it here so
+// nobody "cleans up" this pattern into a header call that mNotify will
+// just reject; if this is a real operational concern, run it behind a
+// proxy that strips query strings from its own access logs.
 @Injectable()
 export class MnotifySmsProvider implements SmsProvider {
   readonly name = 'MNOTIFY' as const;
@@ -44,7 +53,9 @@ export class MnotifySmsProvider implements SmsProvider {
       const response = await fetch(url, { method: 'GET' });
 
       if (!response.ok) {
-        throw new Error(`mNotify HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(
+          `mNotify HTTP ${response.status}: ${response.statusText}`,
+        );
       }
 
       const body = (await response.json()) as {
@@ -62,11 +73,17 @@ export class MnotifySmsProvider implements SmsProvider {
         isConfigured: true,
         smsUnits,
         bonusUnits,
-        status: smsUnits > 100 ? 'ACTIVE' : smsUnits > 0 ? 'LOW_BALANCE' : 'EXHAUSTED',
+        status:
+          smsUnits > 100
+            ? 'ACTIVE'
+            : smsUnits > 0
+              ? 'LOW_BALANCE'
+              : 'EXHAUSTED',
         tier: 2,
       };
-    } catch (err: any) {
-      this.logger.warn(`Failed to fetch mNotify balance: ${err?.message}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Failed to fetch mNotify balance: ${message}`);
       return {
         provider: 'MNOTIFY',
         displayName: 'mNotify (Fallback)',
@@ -74,7 +91,7 @@ export class MnotifySmsProvider implements SmsProvider {
         smsUnits: 0,
         status: 'ERROR',
         tier: 2,
-        error: err?.message || 'Connection error',
+        error: message || 'Connection error',
       };
     }
   }
@@ -114,7 +131,10 @@ export class MnotifySmsProvider implements SmsProvider {
       };
 
       if (!response.ok || body.status !== 'success') {
-        throw new Error(body.message || `mNotify dispatch failed with status ${response.status}`);
+        throw new Error(
+          body.message ||
+            `mNotify dispatch failed with status ${response.status}`,
+        );
       }
 
       const messageId = body.summary?._id || `mnotify_${Date.now()}`;
@@ -125,14 +145,15 @@ export class MnotifySmsProvider implements SmsProvider {
         unitsUsed: 1,
         status: 'DELIVERED',
       };
-    } catch (err: any) {
-      this.logger.error(`mNotify send failed: ${err?.message}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`mNotify send failed: ${message}`);
       return {
         success: false,
         provider: 'MNOTIFY',
         unitsUsed: 0,
         status: 'FAILED',
-        error: err?.message || 'mNotify dispatch failed',
+        error: message || 'mNotify dispatch failed',
       };
     }
   }

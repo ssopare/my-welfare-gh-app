@@ -1003,6 +1003,7 @@ export const NOTIFICATION_TYPES = [
   "CLAIM_STAGE_ENTERED",
   "CLAIM_STATUS_CHANGED",
   "SUBSCRIPTION_LAPSED",
+  "MEMBER_JOIN_PENDING",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -1385,6 +1386,11 @@ export interface SmsProviderBalance {
   status: "ACTIVE" | "LOW_BALANCE" | "EXHAUSTED" | "UNCONFIGURED" | "ERROR";
   tier: number; // 1 = Primary, 2 = Fallback, 3 = Enterprise
   error?: string;
+  // True when the provider has no real balance-check API (Hubtel — SMS
+  // billing draws from a shared merchant wallet, no documented "remaining
+  // units" endpoint). smsUnits is 0 in that case, not a real reading — the
+  // UI must not render it as "exhausted" or fold it into a total.
+  balanceUnavailable?: boolean;
 }
 
 export interface SmsGatewaySummary {
@@ -1418,5 +1424,21 @@ export interface SendTestSmsInput {
 export interface SendBroadcastSmsInput {
   message: string;
   recipientGroup: "ALL_MEMBERS" | "ACTIVE_MEMBERS" | "DEFAULTERS";
+}
+
+// Platform-operator-controlled: whether a given NotificationType, on top
+// of its always-on in-app entry, also dispatches a real SMS through the
+// gateway above. id/updatedAt are null for a type with no row yet (an
+// implicit "off" that GET /platform/notification-channel-settings still
+// lists, rather than omitting).
+export interface NotificationChannelSetting {
+  id: string | null;
+  notificationType: NotificationType;
+  smsEnabled: boolean;
+  updatedAt: string | null;
+}
+
+export interface UpdateNotificationChannelSettingInput {
+  smsEnabled: boolean;
 }
 

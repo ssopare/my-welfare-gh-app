@@ -7,7 +7,8 @@ import type {
 } from './sms-provider.interface';
 
 const ARKESEL_SEND_URL = 'https://sms.arkesel.com/api/v2/sms/send';
-const ARKESEL_BALANCE_URL = 'https://sms.arkesel.com/api/v2/clients/balance-details';
+const ARKESEL_BALANCE_URL =
+  'https://sms.arkesel.com/api/v2/clients/balance-details';
 
 @Injectable()
 export class ArkeselSmsProvider implements SmsProvider {
@@ -48,7 +49,9 @@ export class ArkeselSmsProvider implements SmsProvider {
       });
 
       if (!response.ok) {
-        throw new Error(`Arkesel HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(
+          `Arkesel HTTP ${response.status}: ${response.statusText}`,
+        );
       }
 
       const body = (await response.json()) as {
@@ -69,11 +72,17 @@ export class ArkeselSmsProvider implements SmsProvider {
         smsUnits,
         mainBalanceValue: mainBalance,
         currency: 'GHS',
-        status: smsUnits > 100 ? 'ACTIVE' : smsUnits > 0 ? 'LOW_BALANCE' : 'EXHAUSTED',
+        status:
+          smsUnits > 100
+            ? 'ACTIVE'
+            : smsUnits > 0
+              ? 'LOW_BALANCE'
+              : 'EXHAUSTED',
         tier: 1,
       };
-    } catch (err: any) {
-      this.logger.warn(`Failed to fetch Arkesel balance: ${err?.message}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Failed to fetch Arkesel balance: ${message}`);
       return {
         provider: 'ARKESEL',
         displayName: 'Arkesel (Primary)',
@@ -81,7 +90,7 @@ export class ArkeselSmsProvider implements SmsProvider {
         smsUnits: 0,
         status: 'ERROR',
         tier: 1,
-        error: err?.message || 'Connection error',
+        error: message || 'Connection error',
       };
     }
   }
@@ -119,7 +128,10 @@ export class ArkeselSmsProvider implements SmsProvider {
       };
 
       if (!response.ok || body.status !== 'success') {
-        throw new Error(body.message || `Arkesel dispatch failed with status ${response.status}`);
+        throw new Error(
+          body.message ||
+            `Arkesel dispatch failed with status ${response.status}`,
+        );
       }
 
       const messageId = body.data?.[0]?.id || `arkesel_${Date.now()}`;
@@ -130,14 +142,15 @@ export class ArkeselSmsProvider implements SmsProvider {
         unitsUsed: 1,
         status: 'DELIVERED',
       };
-    } catch (err: any) {
-      this.logger.error(`Arkesel send failed: ${err?.message}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Arkesel send failed: ${message}`);
       return {
         success: false,
         provider: 'ARKESEL',
         unitsUsed: 0,
         status: 'FAILED',
-        error: err?.message || 'Arkesel dispatch failed',
+        error: message || 'Arkesel dispatch failed',
       };
     }
   }

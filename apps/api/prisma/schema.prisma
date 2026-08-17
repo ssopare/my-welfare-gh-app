@@ -1395,3 +1395,21 @@ model SmsLog {
   @@index([phoneNumber])
   @@map("sms_logs")
 }
+
+// Platform-operator-managed, not tenant-scoped — same "one shared catalogue
+// every tenant is subject to" reasoning as SubscriptionPlan, not per-org
+// (an org can't opt itself into free SMS the platform pays for). One row
+// per NotificationType; a type with no row here defaults to SMS off — see
+// NotificationService.notifyInTx, the one place this is actually read.
+// Every type starts false: wiring a real, costed external channel onto an
+// existing in-app notification is a deliberate per-type decision, not
+// something that should suddenly start costing money on every
+// organisation the moment this shipped.
+model NotificationChannelSetting {
+  id               String           @id @default(uuid())
+  notificationType NotificationType @unique
+  smsEnabled       Boolean          @default(false)
+  updatedAt        DateTime         @updatedAt
+
+  @@map("notification_channel_settings")
+}

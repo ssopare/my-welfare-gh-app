@@ -29,9 +29,9 @@ export class HubtelSmsProvider implements SmsProvider {
   isConfigured(): boolean {
     return Boolean(
       this.clientId &&
-        this.clientId.trim().length > 0 &&
-        this.clientSecret &&
-        this.clientSecret.trim().length > 0,
+      this.clientId.trim().length > 0 &&
+      this.clientSecret &&
+      this.clientSecret.trim().length > 0,
     );
   }
 
@@ -40,29 +40,36 @@ export class HubtelSmsProvider implements SmsProvider {
     return `Basic ${Buffer.from(creds).toString('base64')}`;
   }
 
-  async getBalance(): Promise<SmsBalance> {
+  getBalance(): Promise<SmsBalance> {
     if (!this.isConfigured()) {
-      return {
+      return Promise.resolve({
         provider: 'HUBTEL',
         displayName: 'Hubtel (Enterprise)',
         isConfigured: false,
         smsUnits: 0,
         status: 'UNCONFIGURED',
         tier: 3,
-      };
+      });
     }
 
-    // Hubtel returns merchant account / SMS credit balance
-    return {
+    // Unlike Arkesel/mNotify (SMS-only credit systems with a documented
+    // balance endpoint each), Hubtel SMS billing draws from a shared
+    // merchant wallet used across all of Hubtel's services — there is no
+    // documented "remaining SMS units" API to call (confirmed against
+    // their public developer docs). Reporting a real HTTP-derived number
+    // here would mean making one up; reporting balanceUnavailable is the
+    // honest alternative — configured and able to send, balance genuinely
+    // unknown until Hubtel documents/ships an endpoint for it.
+    return Promise.resolve({
       provider: 'HUBTEL',
       displayName: 'Hubtel (Enterprise)',
       isConfigured: true,
-      smsUnits: 5000, // Hubtel draws from merchant wallet
-      mainBalanceValue: 'Active Prepaid',
-      currency: 'GHS',
+      smsUnits: 0,
+      mainBalanceValue: 'Check the Hubtel dashboard directly',
       status: 'ACTIVE',
       tier: 3,
-    };
+      balanceUnavailable: true,
+    });
   }
 
   async sendSms(params: SendSmsParams): Promise<SendSmsResult> {
@@ -99,7 +106,9 @@ export class HubtelSmsProvider implements SmsProvider {
       };
 
       if (!response.ok || (body.status !== undefined && body.status !== 0)) {
-        throw new Error(body.message || `Hubtel dispatch returned status ${response.status}`);
+        throw new Error(
+          body.message || `Hubtel dispatch returned status ${response.status}`,
+        );
       }
 
       return {
@@ -109,14 +118,15 @@ export class HubtelSmsProvider implements SmsProvider {
         unitsUsed: 1,
         status: 'DELIVERED',
       };
-    } catch (err: any) {
-      this.logger.error(`Hubtel send failed: ${err?.message}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Hubtel send failed: ${message}`);
       return {
         success: false,
         provider: 'HUBTEL',
         unitsUsed: 0,
         status: 'FAILED',
-        error: err?.message || 'Hubtel dispatch failed',
+        error: message || 'Hubtel dispatch failed',
       };
     }
   }

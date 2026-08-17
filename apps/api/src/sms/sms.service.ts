@@ -10,7 +10,6 @@ import { MnotifySmsProvider } from './providers/mnotify-sms.provider';
 import { HubtelSmsProvider } from './providers/hubtel-sms.provider';
 import { MockSmsProvider } from './providers/mock-sms.provider';
 import type {
-  SmsBalance,
   SendSmsParams,
   SendSmsResult,
   SmsProvider,
@@ -55,11 +54,12 @@ export class SmsService {
     return [this.mock];
   }
 
-  /**
-   * Sends an SMS with automatic multi-tier failover.
-   * Tries Primary (Arkesel); if it fails, falls back to Tier 2 (mNotify) and Tier 3 (Hubtel).
-   * Persists an audit log in the database with provider attribution.
-   */
+  // Sends an SMS with automatic multi-tier failover, then persists an
+  // audit log. organisationId is required on SendSmsParams (not optional
+  // the way it originally was) — every real caller has one, and a log
+  // entry with no tenant to attribute it to can't be written safely at
+  // all now that this goes through withTenant like everything else in
+  // this schema.
   async sendSms(params: SendSmsParams): Promise<SendSmsResult> {
     const activeProviders = this.getActiveProviders();
     let lastError: string | undefined;
@@ -67,7 +67,9 @@ export class SmsService {
 
     for (const provider of activeProviders) {
       try {
-        this.logger.log(`Attempting SMS dispatch via ${provider.name} (Tier ${provider.tier}) to ${params.to}`);
+        this.logger.log(
+          `Attempting SMS dispatch via ${provider.name} (Tier ${provider.tier}) to ${params.to}`,
+        );
         const result = await provider.sendSms(params);
 
         if (result.success) {
@@ -76,11 +78,15 @@ export class SmsService {
           break;
         } else {
           lastError = result.error || 'Provider returned unsuccessful status';
-          this.logger.warn(`Provider ${provider.name} failed: ${lastError}. Attempting next tier...`);
+          this.logger.warn(
+            `Provider ${provider.name} failed: ${lastError}. Attempting next tier...`,
+          );
         }
-      } catch (err: any) {
-        lastError = err?.message || 'Exception during dispatch';
-        this.logger.warn(`Provider ${provider.name} threw error: ${lastError}. Attempting next tier...`);
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Provider ${provider.name} threw error: ${lastError}. Attempting next tier...`,
+        );
       }
     }
 
@@ -94,10 +100,15 @@ export class SmsService {
       };
     }
 
-    // Persist SMS log if organisationId is known
-    if (params.organisationId) {
-      try {
-        await this.prisma.smsLog.create({
+    // Tenant-scoped like every other write in this schema — a bare
+    // this.prisma.smsLog.create() with no withTenant wrapper never sets
+    // app.tenant_id, so RLS silently applies to nothing and the write
+    // itself would only ever succeed by accident. A logging failure is
+    // swallowed (logged, not thrown) — losing the audit trail must never
+    // undo an SMS that already genuinely sent.
+    try {
+      await this.prisma.withTenant(params.organisationId, (tx) =>
+        tx.smsLog.create({
           data: {
             organisationId: params.organisationId,
             phoneNumber: params.to,
@@ -111,10 +122,10 @@ export class SmsService {
             unitsUsed: finalResult.unitsUsed,
             error: finalResult.error,
           },
-        });
-      } catch (logErr) {
-        this.logger.error(`Failed to write SmsLog: ${logErr}`);
-      }
+        }),
+      );
+    } catch (logErr) {
+      this.logger.error(`Failed to write SmsLog: ${String(logErr)}`);
     }
 
     return finalResult;
@@ -124,7 +135,10 @@ export class SmsService {
    * Generates and dispatches a 6-digit OTP code to the given phone number.
    * Code is valid for 5 minutes.
    */
-  async sendOtp(organisationId: string, phoneNumber: string): Promise<{ success: boolean; message: string }> {
+  async sendOtp(
+    organisationId: string,
+    phoneNumber: string,
+  ): Promise<{ success: boolean; message: string }> {
     const formattedPhone = phoneNumber.replace(/[-\s()]/g, '');
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
@@ -154,15 +168,14 @@ export class SmsService {
   }
 
   /**
-   * Validates an OTP code for a phone number.
+   * Validates an OTP code for a phone number. No universal/bypass code —
+   * MockSmsProvider already covers dev/test dispatch (the generated code
+   * is real and logged to the console there), so there's no need for a
+   * second, separate shortcut here that a misconfigured NODE_ENV could
+   * accidentally leave live in a real deployment.
    */
   verifyOtp(phoneNumber: string, code: string): boolean {
     const formattedPhone = phoneNumber.replace(/[-\s()]/g, '');
-
-    // Allow mock code in development
-    if (code === '123456' && process.env.NODE_ENV !== 'production') {
-      return true;
-    }
 
     const stored = this.otpStore.get(formattedPhone);
     if (!stored) {
@@ -193,15 +206,26 @@ export class SmsService {
    */
   async getGatewaySummary() {
     const balancePromises = this.providers
-      .filter((p) => p.name !== 'MOCK' || !this.providers.some((x) => x.name !== 'MOCK' && x.isConfigured()))
+      .filter(
+        (p) =>
+          p.name !== 'MOCK' ||
+          !this.providers.some((x) => x.name !== 'MOCK' && x.isConfigured()),
+      )
       .map((p) => p.getBalance());
 
     const providerBalances = await Promise.all(balancePromises);
-    const totalAvailableSms = providerBalances.reduce((sum, p) => sum + (p.smsUnits || 0), 0);
-    const activeProviders = providerBalances.filter((p) => p.isConfigured && p.status !== 'ERROR');
+    const totalAvailableSms = providerBalances.reduce(
+      (sum, p) => sum + (p.smsUnits || 0),
+      0,
+    );
+    const activeProviders = providerBalances.filter(
+      (p) => p.isConfigured && p.status !== 'ERROR',
+    );
 
     const primary = activeProviders[0]?.provider || 'ARKESEL';
-    const fallback = activeProviders[1]?.provider || (activeProviders[0] ? activeProviders[0].provider : 'MNOTIFY');
+    const fallback =
+      activeProviders[1]?.provider ||
+      (activeProviders[0] ? activeProviders[0].provider : 'MNOTIFY');
 
     return {
       primaryProvider: primary,
@@ -217,11 +241,13 @@ export class SmsService {
    * Fetches recent SMS delivery logs for an organisation.
    */
   async getLogs(organisationId: string, limit = 50) {
-    return this.prisma.smsLog.findMany({
-      where: { organisationId },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
+    return this.prisma.withTenant(organisationId, (tx) =>
+      tx.smsLog.findMany({
+        where: { organisationId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      }),
+    );
   }
 
   /**
@@ -232,24 +258,35 @@ export class SmsService {
     message: string,
     recipientGroup: 'ALL_MEMBERS' | 'ACTIVE_MEMBERS' | 'DEFAULTERS',
   ) {
-    let whereClause: any = { organisationId };
-    if (recipientGroup === 'ACTIVE_MEMBERS') {
-      whereClause.status = 'ACTIVE';
-    } else if (recipientGroup === 'DEFAULTERS') {
-      whereClause.status = 'IN_ARREARS';
-    }
-
-    const members = await this.prisma.member.findMany({
-      where: whereClause,
-      include: { account: true },
-    });
-
-    const phoneNumbers = members
-      .map((m) => m.account?.phoneNumber)
-      .filter((phone): phone is string => Boolean(phone && phone.trim().length > 0));
+    const phoneNumbers = await this.prisma.withTenant(
+      organisationId,
+      async (tx) => {
+        const members = await tx.member.findMany({
+          where: {
+            organisationId,
+            // MemberStatus is 'DEFAULTER', not 'IN_ARREARS' — the
+            // original filter here never matched any real row, so the
+            // DEFAULTERS broadcast group silently sent to nobody.
+            ...(recipientGroup === 'ACTIVE_MEMBERS'
+              ? { status: 'ACTIVE' as const }
+              : recipientGroup === 'DEFAULTERS'
+                ? { status: 'DEFAULTER' as const }
+                : {}),
+          },
+          include: { account: { select: { phoneNumber: true } } },
+        });
+        return members
+          .map((m) => m.account?.phoneNumber)
+          .filter((phone): phone is string =>
+            Boolean(phone && phone.trim().length > 0),
+          );
+      },
+    );
 
     if (phoneNumbers.length === 0) {
-      throw new NotFoundException('No members with valid phone numbers found for this group');
+      throw new NotFoundException(
+        'No members with valid phone numbers found for this group',
+      );
     }
 
     let successCount = 0;

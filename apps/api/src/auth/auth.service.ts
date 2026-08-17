@@ -289,10 +289,14 @@ export class AuthService {
   // wired to a real SMS provider, just a hardcoded '123456' universal
   // code, which meant anyone who knew it could log in or join as *any*
   // account under an org that had picked either strategy, including
-  // OTP_ONLY where no password is checked at all. Re-enable once a real
-  // SMS provider is actually integrated; until then every read of
-  // authStrategy for auth purposes goes through here instead of trusting
-  // the stored column directly.
+  // OTP_ONLY where no password is checked at all. A real, multi-provider
+  // SMS module now exists (see SmsModule/SmsService — Arkesel/mNotify/
+  // Hubtel with failover), but re-enabling OTP-based login was a
+  // deliberate, explicit call NOT to make: login/join stays password-only.
+  // The SMS module's only auth-adjacent surface is the platform-operator-
+  // gated /sms/send-otp+verify-otp pair, unused by this file. Every read
+  // of authStrategy for auth purposes goes through here instead of
+  // trusting the stored column directly.
   private effectiveAuthStrategy(): 'PASSWORD_ONLY' {
     return 'PASSWORD_ONLY';
   }

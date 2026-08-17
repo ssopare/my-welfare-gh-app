@@ -9,6 +9,13 @@ export interface SmsBalance {
   status: 'ACTIVE' | 'LOW_BALANCE' | 'EXHAUSTED' | 'UNCONFIGURED' | 'ERROR';
   tier: number;
   error?: string;
+  // True when the provider has no real balance-check API at all (Hubtel
+  // — its SMS billing draws from a shared merchant wallet with no
+  // documented "remaining SMS units" endpoint, confirmed against their
+  // public docs). smsUnits is 0 in that case, not a real reading — the
+  // UI must not treat it as "exhausted", and totals/health calculations
+  // that sum smsUnits across providers should exclude it.
+  balanceUnavailable?: boolean;
 }
 
 export interface SendSmsParams {
@@ -16,7 +23,12 @@ export interface SendSmsParams {
   message: string;
   senderId?: string;
   type?: 'OTP' | 'TRANSACTIONAL' | 'BROADCAST' | 'REMINDER';
-  organisationId?: string;
+  // Required, not optional — SmsService.sendSms writes an audit log
+  // through PrismaService.withTenant, which needs a real tenant to scope
+  // to. The individual provider classes (Arkesel/mNotify/Hubtel/Mock)
+  // never read this themselves; it only matters to SmsService's own log
+  // write.
+  organisationId: string;
 }
 
 export interface SendSmsResult {
@@ -31,7 +43,12 @@ export interface SendSmsResult {
 export interface SmsProvider {
   readonly name: 'ARKESEL' | 'MNOTIFY' | 'HUBTEL' | 'MOCK';
   readonly tier: number;
-  isConfigured(): boolean;
-  getBalance(): Promise<SmsBalance>;
-  sendSms(params: SendSmsParams): Promise<SendSmsResult>;
+  // Declared as property function types (not method shorthand) so a
+  // jest.Mocked<SmsProvider> object's members read as plain properties —
+  // method-shorthand signatures make @typescript-eslint/unbound-method
+  // flag bare `expect(mock.sendSms)` references in tests as unsafely
+  // unbound. Implementing classes are unaffected either way.
+  isConfigured: () => boolean;
+  getBalance: () => Promise<SmsBalance>;
+  sendSms: (params: SendSmsParams) => Promise<SendSmsResult>;
 }

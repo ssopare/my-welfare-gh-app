@@ -27,6 +27,9 @@ export default async function PlatformLayout({ children }: { children: ReactNode
           <Button variant="ghost" size="sm" asChild>
             <Link href="/platform/plans">Plans</Link>
           </Button>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/platform/notifications">Notifications</Link>
+          </Button>
         </nav>
         <div className="ml-auto flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{operator.email}</span>

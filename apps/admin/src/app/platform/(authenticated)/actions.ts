@@ -5,8 +5,10 @@ import { apiFetch, ApiError } from "@/lib/api-client";
 import { requirePlatformSession } from "@/lib/platform-session";
 import type {
   CreateSubscriptionPlanInput,
+  NotificationChannelSetting,
   Subscription,
   SubscriptionPlan,
+  UpdateNotificationChannelSettingInput,
   UpdateSubscriptionStatusInput,
 } from "@welfare/shared-types";
 
@@ -81,4 +83,18 @@ export async function archivePlanAction(planId: string): Promise<void> {
   const { token } = await requirePlatformSession();
   await apiFetch(`/platform/subscription-plans/${planId}/archive`, { method: "PATCH", token, body: {} });
   revalidatePath("/platform/plans");
+}
+
+export async function toggleNotificationChannelSmsAction(
+  notificationType: string,
+  smsEnabled: boolean,
+): Promise<void> {
+  const { token } = await requirePlatformSession();
+  const input: UpdateNotificationChannelSettingInput = { smsEnabled };
+  await apiFetch<NotificationChannelSetting>(`/platform/notification-channel-settings/${notificationType}`, {
+    method: "PATCH",
+    token,
+    body: input,
+  });
+  revalidatePath("/platform/notifications");
 }
