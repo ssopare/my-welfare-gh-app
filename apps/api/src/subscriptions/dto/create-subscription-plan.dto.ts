@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsIn,
   IsInt,
   IsNumberString,
@@ -7,6 +8,11 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+
+// The only module keys ModuleAccessGuard currently recognizes anything
+// for — kept here (not a shared enum) since this DTO is the one place
+// that has to validate a submitted value against it.
+export const SUBSCRIPTION_PLAN_MODULES = ['voting'] as const;
 
 // FR-SUB-04. amountValue is a numeric *string* deliberately — same reasoning
 // as CreateContributionPlanDto: money never round-trips through a JS float.
@@ -42,4 +48,12 @@ export class CreateSubscriptionPlanDto {
   @IsOptional()
   @IsNumberString()
   platformFeePercentage?: string;
+
+  // Optional feature modules this plan entitles an organisation to — see
+  // SubscriptionPlan.includedModules and ModuleAccessGuard. Defaults to
+  // none when omitted.
+  @IsOptional()
+  @IsArray()
+  @IsIn(SUBSCRIPTION_PLAN_MODULES, { each: true })
+  includedModules?: string[];
 }

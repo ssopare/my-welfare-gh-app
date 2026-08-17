@@ -1,4 +1,4 @@
-﻿// Entity and response-shape types shared between apps/api and apps/admin.
+// Entity and response-shape types shared between apps/api and apps/admin.
 // Hand-written to mirror the actual Prisma models/DTO response shapes in
 // apps/api, not generated — kept in sync manually as the API evolves. A
 // future API contract change becomes a compile-time error in the admin
@@ -72,6 +72,11 @@ export interface Organisation {
   // out to prospective members, not the raw UUID.
   joinCode: string;
   createdAt: string;
+  // Optional feature modules this org's plan entitles it to — see
+  // SubscriptionPlan.includedModules. Any authenticated member can read
+  // this (unlike /subscription, which is admin-only), so a UI can decide
+  // whether to show e.g. Voting at all.
+  includedModules: string[];
 }
 
 export type AuthStrategy = "PASSWORD_ONLY" | "OTP_ONLY" | "PASSWORD_AND_OTP";
@@ -1180,6 +1185,10 @@ export interface SubscriptionPlan {
   // organisation on this plan — see AutoDisbursement on the API side.
   // Platform-operator-set only.
   platformFeePercentage: string;
+  // Optional feature modules included in this plan — see ModuleAccessGuard
+  // on the API side. 'voting' is the only key that currently means
+  // anything.
+  includedModules: string[];
   archived: boolean;
 }
 
@@ -1228,6 +1237,7 @@ export interface CreateSubscriptionPlanInput {
   billingCadence: string;
   trialDays?: number;
   platformFeePercentage?: string;
+  includedModules?: string[];
 }
 
 export interface UpdateSubscriptionStatusInput {
@@ -1356,3 +1366,57 @@ export interface UploadResponse {
   /** Relative URL of the uploaded file, e.g. /uploads/avatars/uuid.jpg */
   url: string;
 }
+
+// ---------------------------------------------------------------------------
+// Multi-Tier SMS & OTP Messaging Gateway
+// ---------------------------------------------------------------------------
+
+export type SmsProviderName = "ARKESEL" | "MNOTIFY" | "HUBTEL" | "MOCK";
+export type SmsDeliveryStatusType = "DELIVERED" | "SENT" | "FAILED";
+
+export interface SmsProviderBalance {
+  provider: SmsProviderName;
+  displayName: string;
+  isConfigured: boolean;
+  smsUnits: number;
+  mainBalanceValue?: string;
+  currency?: string;
+  bonusUnits?: number;
+  status: "ACTIVE" | "LOW_BALANCE" | "EXHAUSTED" | "UNCONFIGURED" | "ERROR";
+  tier: number; // 1 = Primary, 2 = Fallback, 3 = Enterprise
+  error?: string;
+}
+
+export interface SmsGatewaySummary {
+  primaryProvider: SmsProviderName;
+  fallbackProvider: SmsProviderName;
+  providers: SmsProviderBalance[];
+  totalAvailableSms: number;
+  lowBalanceThreshold: number;
+  isHealthy: boolean;
+}
+
+export interface SmsLogItem {
+  id: string;
+  organisationId: string;
+  phoneNumber: string;
+  messageExcerpt: string;
+  type: "OTP" | "TRANSACTIONAL" | "BROADCAST" | "REMINDER";
+  provider: SmsProviderName;
+  status: SmsDeliveryStatusType;
+  unitsUsed: number;
+  error: string | null;
+  createdAt: string;
+}
+
+export interface SendTestSmsInput {
+  phoneNumber: string;
+  message: string;
+  provider?: SmsProviderName;
+}
+
+export interface SendBroadcastSmsInput {
+  message: string;
+  recipientGroup: "ALL_MEMBERS" | "ACTIVE_MEMBERS" | "DEFAULTERS";
+}
+

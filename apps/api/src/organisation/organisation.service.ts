@@ -21,13 +21,27 @@ export class OrganisationService {
 
   async getOwn(actor: AuthTokenPayload) {
     return this.prisma.withTenant(actor.organisationId, async (tx) => {
-      const organisation = await tx.organisation.findUnique({
-        where: { id: actor.organisationId },
-      });
+      const [organisation, subscription] = await Promise.all([
+        tx.organisation.findUnique({ where: { id: actor.organisationId } }),
+        tx.subscription.findUnique({
+          where: { organisationId: actor.organisationId },
+          include: { plan: true },
+        }),
+      ]);
       if (!organisation) {
         throw new NotFoundException('Organisation not found');
       }
-      return organisation;
+      return {
+        ...organisation,
+        // Piggybacked here rather than requiring a second, admin-only
+        // /subscription call (SubscriptionService.getOwn is requireAdmin-
+        // gated) — this is the one endpoint every authenticated member,
+        // not just admins, can already reach, which is what a mobile
+        // client hiding an unavailable feature actually needs. See
+        // ModuleAccessGuard for the real enforcement; this is only what
+        // lets a UI decide whether to show the entry point at all.
+        includedModules: subscription?.plan?.includedModules ?? [],
+      };
     });
   }
 

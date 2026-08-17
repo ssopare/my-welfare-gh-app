@@ -19,6 +19,7 @@ import { ReportingModule } from './reporting/reporting.module';
 import { RuleEngineModule } from './rule-engine/rule-engine.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { UploadModule } from './upload/upload.module';
+import { SmsModule } from './sms/sms.module';
 
 @Module({
   imports: [
@@ -40,7 +41,9 @@ import { UploadModule } from './upload/upload.module';
     OrganisationModule,
     BudgetModule,
     UploadModule,
+    SmsModule,
   ],
+
   controllers: [AppController],
   providers: [AppService],
 })

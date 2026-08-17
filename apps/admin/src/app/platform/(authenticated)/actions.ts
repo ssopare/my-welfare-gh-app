@@ -48,6 +48,7 @@ export async function createSubscriptionPlanAction(
   const { token } = await requirePlatformSession();
   const trialDaysRaw = String(formData.get("trialDays") ?? "").trim();
   const platformFeePercentageRaw = String(formData.get("platformFeePercentage") ?? "").trim();
+  const includedModules = formData.getAll("includedModules").map((v) => String(v));
   const input: CreateSubscriptionPlanInput = {
     name: String(formData.get("name") ?? "").trim(),
     priceAmount: String(formData.get("priceAmount") ?? "").trim(),
@@ -55,6 +56,7 @@ export async function createSubscriptionPlanAction(
     billingCadence: String(formData.get("billingCadence") ?? "monthly"),
     trialDays: trialDaysRaw ? Number.parseInt(trialDaysRaw, 10) : undefined,
     platformFeePercentage: platformFeePercentageRaw || undefined,
+    includedModules: includedModules.length ? includedModules : undefined,
   };
 
   if (!input.name || !input.priceAmount) {

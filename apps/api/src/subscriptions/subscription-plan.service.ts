@@ -21,6 +21,7 @@ export class SubscriptionPlanService {
         billingCadence: dto.billingCadence,
         trialDays: dto.trialDays ?? 60,
         platformFeePercentage: dto.platformFeePercentage ?? '0',
+        includedModules: dto.includedModules ?? [],
       },
     });
   }

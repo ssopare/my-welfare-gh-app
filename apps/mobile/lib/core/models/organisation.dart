@@ -6,6 +6,7 @@ class Organisation {
     required this.status,
     required this.paymentAllocationPolicy,
     required this.logoUrl,
+    required this.includedModules,
   });
 
   factory Organisation.fromJson(Map<String, dynamic> json) => Organisation(
@@ -15,6 +16,7 @@ class Organisation {
         status: json['status'] as String,
         paymentAllocationPolicy: json['paymentAllocationPolicy'] as String,
         logoUrl: json['logoUrl'] as String?,
+        includedModules: (json['includedModules'] as List?)?.cast<String>() ?? const [],
       );
 
   final String id;
@@ -26,6 +28,11 @@ class Organisation {
   // which open obligations a payment covers). See PayScreen.
   final String paymentAllocationPolicy;
   final String? logoUrl;
+  // Optional feature modules this org's plan entitles it to — see
+  // ModuleAccessGuard on the backend. 'voting' is the only key that
+  // currently means anything.
+  final List<String> includedModules;
 
   bool get memberSelectsObligations => paymentAllocationPolicy == 'member_selected';
+  bool get hasVoting => includedModules.contains('voting');
 }

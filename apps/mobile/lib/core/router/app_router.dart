@@ -11,6 +11,7 @@ import '../../features/auth/login_screen.dart';
 import '../../features/auth/onboarding_screen.dart';
 import '../../features/auth/splash_screen.dart';
 import '../../features/auth/switch_organisation_screen.dart';
+import '../../features/activity/activity_screen.dart';
 import '../../features/claims/claims_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/home/home_screen.dart';
@@ -19,6 +20,7 @@ import '../../features/profile/profile_screen.dart';
 import '../../features/voting/elections_list_screen.dart';
 import '../../features/voting/ballot_screen.dart';
 import '../../features/payments/treasury_screen.dart';
+import '../../features/payments/statement_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final auth = ref.watch(authControllerProvider);
@@ -83,6 +85,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/treasury',
             builder: (context, state) => const TreasuryScreen(),
+          ),
+          GoRoute(
+            path: '/activity',
+            builder: (context, state) => const ActivityScreen(),
+          ),
+          GoRoute(
+            path: '/statement',
+            builder: (context, state) => const StatementScreen(),
           ),
         ],
       ),

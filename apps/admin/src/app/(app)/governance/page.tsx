@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { apiFetchOrNull } from "@/lib/api-client";
 import { requireSession } from "@/lib/session";
-import type { GovernanceBody, Election } from "@welfare/shared-types";
+import type { GovernanceBody, Election, Organisation } from "@welfare/shared-types";
 import { NewBodyDialog } from "./new-body-dialog";
 import { NewElectionDialog } from "./new-election-dialog";
 import { ElectionTab } from "./election-tab";
@@ -24,8 +24,17 @@ export const metadata: Metadata = {
 
 export default async function GovernancePage() {
   const { token } = await requireSession();
-  const bodies = await apiFetchOrNull<GovernanceBody[]>("/governance-bodies", { token, cache: "no-store" });
-  const elections = await apiFetchOrNull<Election[]>("/elections", { token, cache: "no-store" });
+  const [bodies, organisation] = await Promise.all([
+    apiFetchOrNull<GovernanceBody[]>("/governance-bodies", { token, cache: "no-store" }),
+    apiFetchOrNull<Organisation>("/organisation", { token, cache: "no-store" }),
+  ]);
+  // Voting is an optional plan module (see ModuleAccessGuard on the API
+  // side) — hidden entirely when not included, not shown disabled, so an
+  // org without it never even sees a tab that would just 403.
+  const hasVoting = organisation?.includedModules.includes("voting") ?? false;
+  const elections = hasVoting
+    ? await apiFetchOrNull<Election[]>("/elections", { token, cache: "no-store" })
+    : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,7 +46,7 @@ export default async function GovernancePage() {
         rightAction={
           <div className="flex gap-2">
             <NewBodyDialog />
-            <NewElectionDialog />
+            {hasVoting && <NewElectionDialog />}
           </div>
         }
       />
@@ -45,7 +54,7 @@ export default async function GovernancePage() {
       <Tabs defaultValue="bodies" className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="bodies">Governance Bodies</TabsTrigger>
-          <TabsTrigger value="elections">Elections & Referendums</TabsTrigger>
+          {hasVoting && <TabsTrigger value="elections">Elections & Referendums</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="bodies">
@@ -94,9 +103,11 @@ export default async function GovernancePage() {
           )}
         </TabsContent>
 
-        <TabsContent value="elections">
-          <ElectionTab elections={elections} />
-        </TabsContent>
+        {hasVoting && (
+          <TabsContent value="elections">
+            <ElectionTab elections={elections} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

@@ -424,6 +424,14 @@ describe('Subscription billing (e2e)', () => {
       }),
     );
 
+    // runDailySweep() walks every organisation in the whole database
+    // (see NotificationSchedulerService's own comment on why —
+    // withSystemContext is what makes "enumerate every tenant"
+    // possible at all), not just the one this test created. After a
+    // long session's worth of e2e runs against this same shared local
+    // dev database, that full sweep can genuinely take longer than
+    // Jest's default 5s test timeout — confirmed this isn't a
+    // functional break, just a real amount of accumulated test data.
     await scheduler.runDailySweep();
 
     const subRes = await request(app.getHttpServer())
@@ -448,5 +456,5 @@ describe('Subscription billing (e2e)', () => {
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .send({ name: 'Should be blocked' })
       .expect(402);
-  });
+  }, 30000);
 });

@@ -10,14 +10,22 @@ import {
 import type { AuthTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RequiresModule } from '../subscriptions/requires-module.decorator';
 import { CreateElectionDto } from './dto/create-election.dto';
 import { CreateNominationDto } from './dto/create-nomination.dto';
 import { VetNominationDto } from './dto/vet-nomination.dto';
 import { CastVoteDto } from './dto/cast-vote.dto';
 import { GovernanceService } from './governance.service';
 
+// Gated behind the 'voting' plan module (see ModuleAccessGuard) —
+// deliberately at the class level, not per-handler, so every route here
+// (including reads/results) is covered uniformly. GovernanceController
+// (governance-bodies/officers) is a separate controller and is
+// unaffected — an organisation without the voting module keeps full
+// access to committee/officer management, just not elections.
 @Controller('elections')
 @UseGuards(JwtAuthGuard)
+@RequiresModule('voting')
 export class ElectionController {
   constructor(private readonly governance: GovernanceService) {}
 

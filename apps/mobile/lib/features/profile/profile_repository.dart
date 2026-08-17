@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/models/dependant.dart';
 import '../../core/models/member_detail.dart';
 import '../../core/models/organisation.dart';
 import '../../core/providers.dart';
@@ -50,6 +51,18 @@ class ProfileRepository {
     final url = response.data?['url'] as String?;
     if (url == null) throw Exception('Upload succeeded but no URL was returned');
     return url;
+  }
+
+  Future<Dependant> addDependant(String name, String relationship) async {
+    final res = await _api.dio.post(
+      '/members/me/dependants',
+      data: {'name': name, 'relationship': relationship},
+    );
+    return Dependant.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> confirmDependant(String dependantId) {
+    return _api.dio.patch('/members/me/dependants/$dependantId/confirm');
   }
 }
 

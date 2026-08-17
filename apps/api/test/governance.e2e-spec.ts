@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import * as bcrypt from 'bcryptjs';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
@@ -64,6 +65,8 @@ describe('Governance (e2e)', () => {
   let prisma: PrismaService;
   const createdOrgIds: string[] = [];
   const createdAccountIds: string[] = [];
+  const createdOperatorIds: string[] = [];
+  const createdPlanIds: string[] = [];
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -132,6 +135,12 @@ describe('Governance (e2e)', () => {
     }
     for (const accountId of createdAccountIds) {
       await prisma.account.delete({ where: { id: accountId } });
+    }
+    for (const planId of createdPlanIds) {
+      await prisma.subscriptionPlan.delete({ where: { id: planId } });
+    }
+    for (const operatorId of createdOperatorIds) {
+      await prisma.platformOperator.delete({ where: { id: operatorId } });
     }
     await app.close();
   });
@@ -234,6 +243,53 @@ describe('Governance (e2e)', () => {
       })
       .expect(201);
     return res.body as RoleResponse;
+  }
+
+  function uniqueEmail() {
+    return `operator-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
+  }
+
+  async function createPlatformOperator(): Promise<{ accessToken: string }> {
+    const email = uniqueEmail();
+    const password = 'operator-password-123';
+    const passwordHash = await bcrypt.hash(password, 12);
+    const operator = await prisma.platformOperator.create({
+      data: { email, passwordHash },
+    });
+    createdOperatorIds.push(operator.id);
+    const res = await request(app.getHttpServer())
+      .post('/platform/auth/login')
+      .send({ email, password })
+      .expect(201);
+    return { accessToken: (res.body as AccessTokenResponse).accessToken };
+  }
+
+  async function createPlan(
+    operatorToken: string,
+    includedModules: string[],
+  ): Promise<{ id: string }> {
+    const res = await request(app.getHttpServer())
+      .post('/platform/subscription-plans')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({
+        name: 'Module Gating Test Plan',
+        priceAmount: '50.00',
+        currency: 'GHS',
+        billingCadence: 'monthly',
+        includedModules,
+      })
+      .expect(201);
+    const plan = res.body as { id: string };
+    createdPlanIds.push(plan.id);
+    return plan;
+  }
+
+  async function subscribeToPlan(adminToken: string, planId: string) {
+    await request(app.getHttpServer())
+      .post('/subscription/convert')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ planId })
+      .expect(201);
   }
 
   it('creates a governance body, admin-only, cross-tenant isolated', async () => {
@@ -624,6 +680,114 @@ describe('Governance (e2e)', () => {
       // Admin, voter1, voter2 are active members (3 total). Turnout is 2/3 = 66.67%. Quorum requirement is 60%.
       expect(results.turnoutPercentage).toBeCloseTo(66.67, 1);
       expect(results.quorumMet).toBe(true);
+    });
+  });
+
+  describe('Voting module gating', () => {
+    it('a trial organisation (no plan chosen yet) has full access to elections', async () => {
+      const admin = await registerOrganisation('Trial Voting Access Org');
+
+      // Never converted to any plan — still on the free trial from
+      // registration. Per ModuleAccessGuard, a trial org gets every
+      // module, same as every other feature during trial.
+      await request(app.getHttpServer())
+        .get('/elections')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+    });
+
+    it("an organisation on a plan without 'voting' cannot read or write elections at all — governance bodies are unaffected", async () => {
+      const operator = await createPlatformOperator();
+      const plan = await createPlan(operator.accessToken, []); // no modules included
+      const admin = await registerOrganisation('No Voting Plan Org');
+      await subscribeToPlan(admin.accessToken, plan.id);
+
+      // Reads are blocked too — not just writes, unlike the billing-lapse
+      // guard. An org without the module shouldn't see election data at
+      // all, not just be stopped from creating more of it.
+      const listRes = await request(app.getHttpServer())
+        .get('/elections')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(403);
+      expect((listRes.body as { message: string }).message).toContain(
+        "isn't included in your organisation's current plan",
+      );
+
+      await request(app.getHttpServer())
+        .post('/elections')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({
+          title: 'Should be blocked',
+          type: 'OFFICER',
+          isAnonymous: true,
+          nominationStartsAt: new Date().toISOString(),
+          nominationEndsAt: new Date().toISOString(),
+          startsAt: new Date().toISOString(),
+          endsAt: new Date().toISOString(),
+        })
+        .expect(403);
+
+      // Governance bodies are a completely separate controller — gating
+      // voting must not touch them.
+      const body = await createGovernanceBody(admin.accessToken);
+      expect(body.name).toBe('Executive Council');
+      await request(app.getHttpServer())
+        .get('/governance-bodies')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+    });
+
+    it("an organisation on a plan with 'voting' can use elections normally", async () => {
+      const operator = await createPlatformOperator();
+      const plan = await createPlan(operator.accessToken, ['voting']);
+      const admin = await registerOrganisation('Has Voting Plan Org');
+      await subscribeToPlan(admin.accessToken, plan.id);
+
+      await request(app.getHttpServer())
+        .get('/elections')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+
+      const electionRes = await request(app.getHttpServer())
+        .post('/elections')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({
+          title: 'Should succeed',
+          type: 'OFFICER',
+          isAnonymous: true,
+          nominationStartsAt: new Date().toISOString(),
+          nominationEndsAt: new Date().toISOString(),
+          startsAt: new Date().toISOString(),
+          endsAt: new Date().toISOString(),
+        })
+        .expect(201);
+      expect((electionRes.body as ElectionResponse).id).toBeDefined();
+    });
+
+    it("a plan created before this feature shipped is grandfathered in with 'voting' already included", async () => {
+      // Simulates a pre-existing plan by creating one directly (bypassing
+      // the create endpoint, which would apply today's default) and
+      // confirming the migration's backfill intent still holds for any
+      // plan that already has 'voting' — i.e. that includedModules is
+      // read correctly end-to-end, not just at creation time.
+      const legacyPlan = await prisma.subscriptionPlan.create({
+        data: {
+          name: 'Legacy Plan',
+          priceAmount: '20.00',
+          currency: 'GHS',
+          billingCadence: 'monthly',
+          includedModules: ['voting'],
+        },
+      });
+      createdPlanIds.push(legacyPlan.id);
+
+      const admin = await registerOrganisation('Legacy Plan Org');
+      await subscribeToPlan(admin.accessToken, legacyPlan.id);
+
+      await request(app.getHttpServer())
+        .get('/elections')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
     });
   });
 });

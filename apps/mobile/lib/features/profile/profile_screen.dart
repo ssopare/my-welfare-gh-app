@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart' show getTemporaryDirectory;
 
 import '../../core/widgets/status_chip.dart';
 import '../auth/auth_controller.dart';
+import 'add_dependant_dialog.dart';
 import 'profile_repository.dart';
 import '../../core/theme/theme_provider.dart';
 
@@ -302,8 +303,17 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Text('Dependants', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Dependants', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.person_add_outlined),
+                      tooltip: 'Add dependant',
+                      onPressed: () => showAddDependantDialog(context, ref),
+                    ),
+                  ],
+                ),
                 if (member.dependants.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -324,7 +334,21 @@ class ProfileScreen extends ConsumerWidget {
                             subtitle: Text(dependant.relationship),
                             trailing: dependant.confirmed
                                 ? Icon(Icons.check_circle, size: 18, color: theme.colorScheme.primary)
-                                : Text('Pending', style: theme.textTheme.labelSmall),
+                                : TextButton(
+                                    onPressed: () async {
+                                      try {
+                                        await ref.read(profileRepositoryProvider).confirmDependant(dependant.id);
+                                        ref.invalidate(profileDataProvider);
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Could not confirm: $e')),
+                                          );
+                                        }
+                                      }
+                                    },
+                                    child: const Text('Confirm'),
+                                  ),
                           ),
                       ],
                     ),

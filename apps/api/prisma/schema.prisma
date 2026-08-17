@@ -101,6 +101,7 @@ model Organisation {
   fundControlPolicy        FundControlPolicy?
   reconciliationRecords    ReconciliationRecord[]
   autoDisbursements        AutoDisbursement[]
+  smsLogs                  SmsLog[]
 
   @@map("organisations")
 }
@@ -1007,6 +1008,17 @@ model SubscriptionPlan {
   // organisation with no plan assigned at all (Subscription.planId is
   // nullable — trial orgs pay nothing until they pick one).
   platformFeePercentage Decimal  @db.Decimal(5, 2) @default(0)
+  // Optional feature modules this plan entitles an organisation to —
+  // "voting" is the first (see ModuleAccessGuard). Every plan that
+  // existed before this feature shipped was backfilled to include
+  // 'voting' (see the subscription_plan_modules migration), so no
+  // already-paying customer silently lost access; only a *new* plan
+  // starts from an empty list. An organisation still on trial (no plan
+  // chosen yet) gets every module regardless — see ModuleAccessGuard.
+  // Free-form string array (not an enum) so a new module key never needs
+  // a migration — ModuleAccessGuard is the one place that has to
+  // recognize a key for it to actually mean anything.
+  includedModules String[] @default([])
   archived       Boolean  @default(false)
   createdAt      DateTime @default(now())
 
@@ -1346,4 +1358,40 @@ model ReconciliationRecord {
   organisation         Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
 
   @@map("reconciliation_records")
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Tier SMS & OTP Messaging Logs
+// ---------------------------------------------------------------------------
+
+enum SmsProviderType {
+  ARKESEL
+  MNOTIFY
+  HUBTEL
+  MOCK
+}
+
+enum SmsDeliveryStatus {
+  DELIVERED
+  SENT
+  FAILED
+}
+
+model SmsLog {
+  id             String            @id @default(uuid())
+  organisationId String
+  phoneNumber    String
+  messageExcerpt String
+  type           String            @default("TRANSACTIONAL") // OTP | TRANSACTIONAL | BROADCAST | REMINDER
+  provider       SmsProviderType   @default(ARKESEL)
+  status         SmsDeliveryStatus @default(SENT)
+  unitsUsed      Int               @default(1)
+  error          String?
+  createdAt      DateTime          @default(now())
+
+  organisation   Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+  @@index([phoneNumber])
+  @@map("sms_logs")
 }

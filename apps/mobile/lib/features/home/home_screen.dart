@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/models/claim.dart';
 import '../../core/theme/app_colors.dart';
@@ -10,6 +11,7 @@ import '../payments/pay_screen.dart';
 import '../claims/claims_screen.dart';
 import '../claims/new_claim_screen.dart';
 import '../voting/elections_list_screen.dart';
+import 'arrears_screen.dart';
 import 'home_repository.dart';
 
 /// The high-fidelity member home dashboard screen matching the mockup designs.
@@ -179,6 +181,13 @@ class _HomeContent extends ConsumerWidget {
         statusText = data.profile.status;
     }
 
+    // Whether the standing pill should be tappable — either the member's
+    // status has already flipped, or an obligation is overdue even before
+    // that (status changes lag a bit behind the underlying obligations).
+    final bool hasArrears = data.profile.status == 'DEFAULTER' ||
+        data.profile.status == 'SUSPENDED' ||
+        data.obligations.any((o) => o.status == 'OVERDUE' || o.status == 'DEFAULTED');
+
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       children: [
@@ -212,9 +221,7 @@ class _HomeContent extends ConsumerWidget {
                     Icons.notifications_outlined,
                     color: isDark ? AppColors.foregroundDark : AppColors.foregroundLight,
                   ),
-                  onPressed: () {
-                    // Action triggers notification feed
-                  },
+                  onPressed: () => context.push('/notifications'),
                 ),
                 if (data.unreadNotificationCount > 0)
                   Positioned(
@@ -291,29 +298,42 @@ class _HomeContent extends ConsumerWidget {
                             color: isDark ? AppColors.mutedForegroundDark : AppColors.mutedForegroundLight,
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: glowColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: glowColor.withValues(alpha: 0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _PulseDot(color: glowColor),
-                              const SizedBox(width: 6),
-                              Text(
-                                statusText,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: glowColor,
-                                ),
+                        GestureDetector(
+                          onTap: hasArrears
+                              ? () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => ArrearsScreen(obligations: data.obligations),
+                                    ),
+                                  )
+                              : null,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: glowColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: glowColor.withValues(alpha: 0.3),
+                                width: 1,
                               ),
-                            ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _PulseDot(color: glowColor),
+                                const SizedBox(width: 6),
+                                Text(
+                                  statusText,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: glowColor,
+                                  ),
+                                ),
+                                if (hasArrears) ...[
+                                  const SizedBox(width: 2),
+                                  Icon(Icons.chevron_right, size: 14, color: glowColor),
+                                ],
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -427,8 +447,8 @@ class _HomeContent extends ConsumerWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _QuickActionCard(
-                    label: 'Statement',
-                    subtitle: 'View history',
+                    label: 'Pay Dues',
+                    subtitle: 'Settle balance',
                     icon: Icons.assignment_outlined,
                     iconColor: Colors.orange,
                     onTap: () {
@@ -458,33 +478,54 @@ class _HomeContent extends ConsumerWidget {
               children: [
                 Expanded(
                   child: _QuickActionCard(
-                    label: 'Dependants',
-                    subtitle: 'Manage family',
-                    icon: Icons.people_outline,
-                    iconColor: Colors.purple,
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'You have ${data.profile.dependantCount} registered dependant(s).',
-                          ),
-                        ),
-                      );
-                    },
+                    label: 'Payment History',
+                    subtitle: 'Past contributions',
+                    icon: Icons.receipt_long_outlined,
+                    iconColor: Colors.indigo,
+                    onTap: () => context.push('/statement'),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: _QuickActionCard(
-                    label: 'Voting & Polls',
-                    subtitle: 'Cast your ballot',
-                    icon: Icons.how_to_vote_outlined,
-                    iconColor: Colors.teal,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ElectionsListScreen()),
-                      );
-                    },
+                    label: 'Dependants',
+                    subtitle: 'Manage family',
+                    icon: Icons.people_outline,
+                    iconColor: Colors.purple,
+                    onTap: () => context.push('/profile'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                // Voting is an optional plan module (see Organisation.hasVoting
+                // / ModuleAccessGuard on the backend) — hidden entirely when
+                // the org's plan doesn't include it, not shown disabled.
+                if (data.organisation.hasVoting) ...[
+                  Expanded(
+                    child: _QuickActionCard(
+                      label: 'Voting & Polls',
+                      subtitle: 'Cast your ballot',
+                      icon: Icons.how_to_vote_outlined,
+                      iconColor: Colors.teal,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ElectionsListScreen()),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: _QuickActionCard(
+                    label: 'Activity',
+                    subtitle: "Who's paid",
+                    icon: Icons.groups_outlined,
+                    iconColor: Colors.pink,
+                    onTap: () => context.push('/activity'),
                   ),
                 ),
               ],

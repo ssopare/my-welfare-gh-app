@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -99,6 +100,19 @@ export function NewPlanDialog() {
           <p className="-mt-2 text-xs text-muted-foreground">
             Retained from every contribution auto-disbursed to an organisation on this plan.
           </p>
+
+          <div className="flex flex-col gap-2">
+            <Label>Included modules</Label>
+            <div className="flex items-center gap-2.5 rounded-lg border border-border bg-muted/30 p-3">
+              <Checkbox id="module-voting" name="includedModules" value="voting" />
+              <Label htmlFor="module-voting" className="font-normal">
+                Voting &amp; Elections
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Organisations on this plan won&apos;t see Voting at all unless checked — not just blocked, hidden.
+            </p>
+          </div>
 
           {state.error && (
             <p role="alert" className="rounded-md bg-status-bad-bg px-3 py-2 text-sm text-status-bad">
