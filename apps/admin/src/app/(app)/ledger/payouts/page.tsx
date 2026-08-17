@@ -163,6 +163,7 @@ export default async function TreasuryPage() {
                         <TableHead>Beneficiary</TableHead>
                         <TableHead>Network / Bank</TableHead>
                         <TableHead>Account Number</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -171,6 +172,13 @@ export default async function TreasuryPage() {
                           <TableCell className="font-semibold text-sm">{recipient.name}</TableCell>
                           <TableCell className="text-xs uppercase text-muted-foreground">{recipient.bankCode}</TableCell>
                           <TableCell className="font-mono text-sm">{recipient.accountNumber}</TableCell>
+                          <TableCell>
+                            {recipient.verified ? (
+                              <span className="text-xs font-semibold text-status-good">Verified</span>
+                            ) : (
+                              <span className="text-xs font-semibold text-status-warn">Not verified</span>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -242,15 +250,24 @@ export default async function TreasuryPage() {
                             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
                               request.status === "SUCCEEDED"
                                 ? "bg-status-good-bg text-status-good border border-status-good-border"
-                                : request.status === "FAILED" || request.status === "REJECTED"
+                                : request.status === "FAILED" ||
+                                    request.status === "REJECTED" ||
+                                    request.status === "TRANSFER_FAILED"
                                 ? "bg-status-bad-bg text-status-bad border border-status-bad-border"
                                 : "bg-status-warn-bg/20 text-status-warn border border-status-warn-border/30"
                             }`}
                           >
                             {request.status === "SUCCEEDED" && <CheckCircle className="size-3" />}
-                            {request.status === "FAILED" && <XCircle className="size-3" />}
-                            {request.status === "PENDING" && <Clock className="size-3" />}
-                            {request.status}
+                            {(request.status === "FAILED" || request.status === "TRANSFER_FAILED") && (
+                              <XCircle className="size-3" />
+                            )}
+                            {(request.status === "PENDING" || request.status === "TRANSFER_PENDING") && (
+                              <Clock className="size-3" />
+                            )}
+                            {/* TRANSFER_PENDING means fully approved, waiting on the
+                                payment provider to confirm the transfer — not the
+                                same "waiting on checkers" state PENDING is. */}
+                            {request.status === "TRANSFER_PENDING" ? "SENDING" : request.status}
                           </span>
                         </TableCell>
                         <TableCell className="text-xs">

@@ -14,19 +14,16 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { createRecipientAction, type FormActionState } from "./actions";
 
 const INITIAL_STATE: FormActionState = { error: null };
-
-const GH_PROVIDERS = [
-  { code: "MTN", name: "MTN Mobile Money" },
-  { code: "VOD", name: "Telecel (Vodafone Cash)" },
-  { code: "ATL", name: "AT Money (AirtelTigo)" },
-  { code: "GCB", name: "GCB Bank" },
-  { code: "ECO", name: "Ecobank Ghana" },
-  { code: "STA", name: "Stanbic Bank" },
-  { code: "ABS", name: "Absa Bank Ghana" },
-];
 
 export function CreateRecipientDialog({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
@@ -50,7 +47,8 @@ export function CreateRecipientDialog({ className }: { className?: string }) {
         <DialogHeader>
           <DialogTitle>Add Allowlisted Recipient</DialogTitle>
           <DialogDescription>
-            Register a verified recipient. Disbursements can only be sent to allowlisted accounts to prevent unauthorized fund outflows.
+            Registers a real Paystack Transfer Recipient — Paystack has to accept the MoMo number before a
+            disbursement can ever be sent to it. Disbursements can only target allowlisted, verified accounts.
           </DialogDescription>
         </DialogHeader>
 
@@ -61,36 +59,21 @@ export function CreateRecipientDialog({ className }: { className?: string }) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="type">Account Type</Label>
-            <select
-              id="type"
-              name="type"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 dark:bg-background"
-              required
-            >
-              <option value="momo">Mobile Money (MOMO)</option>
-              <option value="bank">Bank Account</option>
-            </select>
+            <Label htmlFor="momoProvider">Mobile Money Network</Label>
+            <Select name="momoProvider" defaultValue="mtn">
+              <SelectTrigger id="momoProvider" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mtn">MTN Mobile Money</SelectItem>
+                <SelectItem value="vod">Telecel Cash (Vodafone)</SelectItem>
+                <SelectItem value="atl">AirtelTigo Money</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bankCode">Provider Bank / Network</Label>
-            <select
-              id="bankCode"
-              name="bankCode"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 dark:bg-background"
-              required
-            >
-              {GH_PROVIDERS.map((provider) => (
-                <option key={provider.code} value={provider.code}>
-                  {provider.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="accountNumber">Phone Number / Account Number</Label>
+            <Label htmlFor="accountNumber">MoMo Number</Label>
             <Input
               id="accountNumber"
               name="accountNumber"

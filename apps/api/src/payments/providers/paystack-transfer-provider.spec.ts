@@ -44,7 +44,7 @@ describe('PaystackTransferProvider', () => {
       currency: 'GHS',
       reference: 'auto-disb-1',
       reason: 'Auto-disbursement for contribution intent-1',
-      metadata: { organisationId: 'org-1', autoDisbursementId: 'auto-disb-1' },
+      metadata: { organisationId: 'org-1', referenceId: 'auto-disb-1' },
     };
   }
 

@@ -1,19 +1,14 @@
-import { IsString, MinLength } from 'class-validator';
+import { IsIn, IsString, MinLength } from 'class-validator';
 
 export class CreatePayoutRecipientDto {
   @IsString()
   @MinLength(1)
   name!: string;
 
-  @IsString()
-  @MinLength(1)
-  type!: string;
+  @IsIn(['mtn', 'vod', 'atl'])
+  momoProvider!: 'mtn' | 'vod' | 'atl';
 
   @IsString()
   @MinLength(1)
   accountNumber!: string;
-
-  @IsString()
-  @MinLength(1)
-  bankCode!: string;
 }

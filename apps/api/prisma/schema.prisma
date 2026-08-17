@@ -1218,6 +1218,13 @@ model PayoutRecipient {
   accountNumber  String
   bankCode       String
   isAllowlisted  Boolean        @default(true)
+  // A real Paystack Transfer Recipient — same shape/reasoning as
+  // SettlementAccount.providerRecipientCode/verified. Null/false until
+  // PayoutService.createPayoutRecipient's real call to Paystack succeeds;
+  // createPayoutRequest refuses to let a request target an unverified
+  // recipient.
+  providerRecipientCode String?
+  verified       Boolean        @default(false)
   createdAt      DateTime       @default(now())
 
   organisation   Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
@@ -1238,6 +1245,12 @@ model PayoutRequest {
   requesterId    String
   createdAt      DateTime       @default(now())
   completedAt    DateTime?
+  // Set once a fully-approved request's real Paystack transfer is
+  // initiated (status becomes TRANSFER_PENDING) — the idempotency key
+  // PayoutService.handleTransferWebhook matches the confirming webhook
+  // against, same "pending_<uuid> placeholder, updated after the real
+  // call" pattern PaymentIntent/AutoDisbursement already use.
+  providerReference String?     @unique
 
   organisation   Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   fund           Fund           @relation(fields: [fundId], references: [id])

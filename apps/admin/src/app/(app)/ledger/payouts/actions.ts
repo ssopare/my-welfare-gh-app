@@ -84,19 +84,18 @@ export async function createRecipientAction(
 ): Promise<FormActionState> {
   const { token } = await requireSession();
   const name = String(formData.get("name") ?? "").trim();
-  const type = String(formData.get("type") ?? "momo").trim();
+  const momoProvider = String(formData.get("momoProvider") ?? "").trim();
   const accountNumber = String(formData.get("accountNumber") ?? "").trim();
-  const bankCode = String(formData.get("bankCode") ?? "").trim();
 
-  if (!name || !accountNumber || !bankCode) {
-    return { error: "Name, account number, and provider bank/network are required." };
+  if (!name || !accountNumber || !momoProvider) {
+    return { error: "Name, MoMo number, and network are required." };
   }
 
   try {
     await apiFetch<PayoutRecipient>("/payouts/recipients", {
       method: "POST",
       token,
-      body: { name, type, accountNumber, bankCode },
+      body: { name, momoProvider, accountNumber },
     });
   } catch (error) {
     return { error: error instanceof ApiError ? error.message : "Something went wrong. Please try again." };

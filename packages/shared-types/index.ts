@@ -1260,6 +1260,9 @@ export interface PayoutRecipient {
   type: string;
   accountNumber: string;
   bankCode: string;
+  // A real Paystack Transfer Recipient — see PayoutService.createPayoutRecipient.
+  providerRecipientCode: string | null;
+  verified: boolean;
   isAllowlisted: boolean;
   createdAt: string;
 }
@@ -1322,9 +1325,8 @@ export interface CreateSettlementAccountInput {
 
 export interface CreatePayoutRecipientInput {
   name: string;
-  type: string;
+  momoProvider: "mtn" | "vod" | "atl";
   accountNumber: string;
-  bankCode: string;
 }
 
 export interface CreatePayoutRequestInput {

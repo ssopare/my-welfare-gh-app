@@ -6,6 +6,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
+import type {
+  AutoDisbursement,
+  PayoutRequest,
+} from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
 import { LedgerService } from '../ledger/ledger.service';
@@ -92,18 +96,38 @@ export class PayoutService {
     });
   }
 
+  // Registers a real Paystack Transfer Recipient for this beneficiary —
+  // same reasoning as createSettlementAccount: a payout can't be trusted
+  // to actually reach anyone until Paystack has genuinely accepted the
+  // MoMo number it's headed to. A rejected recipient creation is fatal.
   async createPayoutRecipient(
     organisationId: string,
     dto: CreatePayoutRecipientDto,
   ) {
+    let result: { recipientCode: string; verified: boolean };
+    try {
+      result = await this.transferProvider.createRecipient({
+        organisationId,
+        name: dto.name,
+        accountNumber: dto.accountNumber,
+        momoProvider: dto.momoProvider,
+        currency: 'GHS',
+      });
+    } catch (err) {
+      throw new BadRequestException(
+        `Unable to register recipient with the payment provider: ${(err as Error).message}`,
+      );
+    }
     return this.prisma.withTenant(organisationId, async (tx) => {
       return tx.payoutRecipient.create({
         data: {
           organisationId,
           name: dto.name,
-          type: dto.type,
+          type: 'mobile_money',
           accountNumber: dto.accountNumber,
-          bankCode: dto.bankCode,
+          bankCode: dto.momoProvider.toUpperCase(),
+          providerRecipientCode: result.recipientCode,
+          verified: result.verified,
           isAllowlisted: true,
         },
       });
@@ -226,6 +250,11 @@ export class PayoutService {
           'Recipient is not allowlisted for payouts',
         );
       }
+      if (!recipient.verified || !recipient.providerRecipientCode) {
+        throw new BadRequestException(
+          'Recipient has not been verified with the payment provider yet',
+        );
+      }
 
       // 2. Verify fund exists and check cash balance
       const fund = await tx.fund.findUnique({
@@ -266,7 +295,13 @@ export class PayoutService {
         where: {
           organisationId,
           createdAt: { gte: todayStart },
-          status: { in: ['PENDING', 'APPROVED', 'SUCCEEDED'] },
+          // TRANSFER_PENDING still counts — a request whose transfer
+          // hasn't been confirmed yet isn't free headroom for another
+          // payout to claim; otherwise two approvals in quick succession
+          // could jointly exceed the cap during that window.
+          status: {
+            in: ['PENDING', 'APPROVED', 'TRANSFER_PENDING', 'SUCCEEDED'],
+          },
         },
       });
       const dailyTotal =
@@ -285,7 +320,13 @@ export class PayoutService {
         where: {
           organisationId,
           createdAt: { gte: firstDayOfMonth },
-          status: { in: ['PENDING', 'APPROVED', 'SUCCEEDED'] },
+          // TRANSFER_PENDING still counts — a request whose transfer
+          // hasn't been confirmed yet isn't free headroom for another
+          // payout to claim; otherwise two approvals in quick succession
+          // could jointly exceed the cap during that window.
+          status: {
+            in: ['PENDING', 'APPROVED', 'TRANSFER_PENDING', 'SUCCEEDED'],
+          },
         },
       });
       const monthlyTotal =
@@ -398,47 +439,67 @@ export class PayoutService {
       }
 
       if (activeApprovalsCount >= requiredApprovals) {
-        // Payout fully approved! Post ledger entries and mark SUCCEEDED (simulated provider payout transfer)
-        const [cashAccount, expenseAccount] = await Promise.all([
-          tx.ledgerAccount.findFirst({
-            where: { fundId: payout.fundId, name: 'Cash' },
-          }),
-          tx.ledgerAccount.findFirst({
-            where: { fundId: payout.fundId, name: 'Benefits Expense' },
-          }),
-        ]);
-
-        if (!cashAccount || !expenseAccount) {
-          throw new NotFoundException(
-            'Cash or Benefits Expense accounts missing for this fund',
+        // Payout fully approved — hand off to a real Paystack transfer.
+        // No ledger entry is posted here: exactly like AutoDisbursement,
+        // a transfer only ever comes back "pending" from Paystack, so the
+        // benefit expense is only real once handleTransferWebhook
+        // confirms it, not the moment an officer clicks approve.
+        const recipient = await tx.payoutRecipient.findUnique({
+          where: { id: payout.recipientId },
+        });
+        if (!recipient?.verified || !recipient.providerRecipientCode) {
+          // Can't happen through the normal flow (createPayoutRequest
+          // already requires a verified recipient), but a recipient could
+          // in principle have been altered between request and approval —
+          // fail loudly rather than silently stranding the payout.
+          throw new BadRequestException(
+            'Recipient is no longer verified with the payment provider',
           );
         }
 
-        await this.ledger.postJournalEntryInTx(tx, organisationId, {
-          fundId: payout.fundId,
-          description: `Payout disbursement to recipient ${payout.recipientId} for: ${payout.purpose}`,
-          sourceType: 'benefit_disbursement',
-          sourceId: payout.id,
-          createdBy: officerMemberId,
-          lines: [
-            {
-              ledgerAccountId: expenseAccount.id,
-              debit: payout.amountValue.toString(),
-            },
-            {
-              ledgerAccountId: cashAccount.id,
-              credit: payout.amountValue.toString(),
-            },
-          ],
+        const placeholderReference = `pending_${randomUUID()}`;
+        await tx.payoutRequest.update({
+          where: { id: requestId },
+          data: { providerReference: placeholderReference },
         });
 
-        return tx.payoutRequest.update({
-          where: { id: requestId },
-          data: {
-            status: 'SUCCEEDED',
-            completedAt: new Date(),
-          },
-        });
+        try {
+          const result = await this.transferProvider.initiateTransfer({
+            organisationId,
+            recipientCode: recipient.providerRecipientCode,
+            amountValue: payout.amountValue.toString(),
+            currency: payout.currency,
+            reference: requestId,
+            reason: `Payout to ${recipient.name}: ${payout.purpose}`,
+            metadata: { organisationId, referenceId: requestId },
+          });
+          return tx.payoutRequest.update({
+            where: { id: requestId },
+            data: {
+              status: 'TRANSFER_PENDING',
+              providerReference: result.providerReference,
+            },
+            include: { approvals: true },
+          });
+        } catch (err) {
+          // The approval itself still stands (recorded above) — only the
+          // handoff to the provider failed. Terminal, not retried
+          // automatically; same "a downstream side-effect never rewrites
+          // an already-true fact" principle as AutoDisbursement's own
+          // catch block.
+          await tx.reconciliationException.create({
+            data: {
+              organisationId,
+              providerReference: placeholderReference,
+              reason: `Payout transfer failed to initiate for request ${requestId}: ${(err as Error).message}`,
+            },
+          });
+          return tx.payoutRequest.update({
+            where: { id: requestId },
+            data: { status: 'TRANSFER_FAILED' },
+            include: { approvals: true },
+          });
+        }
       }
 
       // Otherwise, return request remains PENDING (waiting on more checkers)
@@ -582,7 +643,7 @@ export class PayoutService {
         currency: 'GHS',
         reference: record.id,
         reason: `Auto-disbursement for contribution ${paymentIntentId}`,
-        metadata: { organisationId, autoDisbursementId: record.id },
+        metadata: { organisationId, referenceId: record.id },
       });
       return tx.autoDisbursement.update({
         where: { id: record.id },
@@ -612,142 +673,243 @@ export class PayoutService {
   // deliveries are logged as ReconciliationExceptions (reused, not a new
   // table), an already-terminal-and-matching redelivery is a no-op, and
   // the ledger is posted only once, only here, only on genuine success.
+  // The one entry point both the mock dev webhook and the real signed
+  // Paystack webhook call for any transfer.success/transfer.failed event
+  // — routes by looking the providerReference up in whichever table
+  // actually initiated it, rather than threading a "kind" flag through
+  // Paystack's own metadata round-trip. providerReference is a real
+  // unique key in both tables, so there's no realistic collision between
+  // an AutoDisbursement and a PayoutRequest sharing one.
   async handleTransferWebhook(dto: TransferWebhookPayloadDto) {
     return this.prisma.withTenant(dto.organisationId, async (tx) => {
-      const record = await tx.autoDisbursement.findUnique({
+      const autoDisbursement = await tx.autoDisbursement.findUnique({
         where: { providerReference: dto.providerReference },
       });
+      if (autoDisbursement) {
+        return this.confirmAutoDisbursementTransfer(tx, dto, autoDisbursement);
+      }
 
-      if (!record) {
+      const payoutRequest = await tx.payoutRequest.findUnique({
+        where: { providerReference: dto.providerReference },
+      });
+      if (payoutRequest) {
+        return this.confirmPayoutTransfer(tx, dto, payoutRequest);
+      }
+
+      await tx.reconciliationException.create({
+        data: {
+          organisationId: dto.organisationId,
+          providerReference: dto.providerReference,
+          reason:
+            'Transfer webhook referenced an unknown providerReference for this organisation',
+        },
+      });
+      return { outcome: 'unmatched' as const };
+    });
+  }
+
+  private async confirmAutoDisbursementTransfer(
+    tx: Prisma.TransactionClient,
+    dto: TransferWebhookPayloadDto,
+    record: AutoDisbursement,
+  ) {
+    if (record.status !== 'PENDING') {
+      const reportedOutcome =
+        dto.status === 'succeeded' ? 'SUCCEEDED' : 'FAILED';
+      if (record.status !== reportedOutcome) {
         await tx.reconciliationException.create({
           data: {
             organisationId: dto.organisationId,
             providerReference: dto.providerReference,
-            reason:
-              'Transfer webhook referenced an unknown providerReference for this organisation',
+            reason: `Transfer webhook reported "${dto.status}" but this disbursement was already recorded as ${record.status}`,
           },
         });
-        return { outcome: 'unmatched' as const };
       }
+      return { outcome: 'already_processed' as const, status: record.status };
+    }
 
-      if (record.status !== 'PENDING') {
-        const reportedOutcome =
-          dto.status === 'succeeded' ? 'SUCCEEDED' : 'FAILED';
-        if (record.status !== reportedOutcome) {
-          await tx.reconciliationException.create({
-            data: {
-              organisationId: dto.organisationId,
-              providerReference: dto.providerReference,
-              reason: `Transfer webhook reported "${dto.status}" but this disbursement was already recorded as ${record.status}`,
-            },
-          });
-        }
-        return {
-          outcome: 'already_processed' as const,
-          status: record.status,
-        };
-      }
+    if (dto.status === 'failed') {
+      await tx.autoDisbursement.update({
+        where: { id: record.id },
+        data: { status: 'FAILED', completedAt: new Date() },
+      });
+      // No maker-checker exists on this path to otherwise catch a
+      // failure — surface it the same way an unmatched webhook does.
+      await tx.reconciliationException.create({
+        data: {
+          organisationId: dto.organisationId,
+          providerReference: dto.providerReference,
+          reason: `Auto-disbursement transfer failed for payment intent ${record.paymentIntentId}`,
+        },
+      });
+      return { outcome: 'failed' as const };
+    }
 
-      if (dto.status === 'failed') {
-        await tx.autoDisbursement.update({
-          where: { id: record.id },
-          data: { status: 'FAILED', completedAt: new Date() },
-        });
-        // No maker-checker exists on this path to otherwise catch a
-        // failure — surface it the same way an unmatched webhook does.
-        await tx.reconciliationException.create({
-          data: {
-            organisationId: dto.organisationId,
-            providerReference: dto.providerReference,
-            reason: `Auto-disbursement transfer failed for payment intent ${record.paymentIntentId}`,
-          },
-        });
-        return { outcome: 'failed' as const };
-      }
+    const [cashAccount, settledAccount] = await Promise.all([
+      tx.ledgerAccount.findFirst({
+        where: { fundId: record.fundId, name: 'Cash' },
+      }),
+      this.findOrCreateFundAccount(
+        tx,
+        record.organisationId,
+        record.fundId,
+        'Settled to MoMo',
+        'ASSET',
+      ),
+    ]);
+    if (!cashAccount) {
+      throw new NotFoundException(
+        'This fund is missing its Cash ledger account',
+      );
+    }
 
-      const [cashAccount, settledAccount] = await Promise.all([
-        tx.ledgerAccount.findFirst({
-          where: { fundId: record.fundId, name: 'Cash' },
-        }),
-        this.findOrCreateFundAccount(
+    // Only find-or-create the fee account, and only add its line, when
+    // there's an actual fee to post — a zero-amount line is invalid
+    // (postJournalEntryInTx rejects a line with neither a real debit
+    // nor credit), and most orgs have no plan/0% fee, so this account
+    // often never needs to exist at all.
+    const feePercentGreaterThanZero = record.platformFeeValue.greaterThan(0);
+    const feeAccount = feePercentGreaterThanZero
+      ? await this.findOrCreateFundAccount(
           tx,
           record.organisationId,
           record.fundId,
-          'Settled to MoMo',
-          'ASSET',
-        ),
-      ]);
-      if (!cashAccount) {
-        throw new NotFoundException(
-          'This fund is missing its Cash ledger account',
-        );
-      }
+          'Platform Fee Expense',
+          'EXPENSE',
+        )
+      : null;
 
-      // Only find-or-create the fee account, and only add its line, when
-      // there's an actual fee to post — a zero-amount line is invalid
-      // (postJournalEntryInTx rejects a line with neither a real debit
-      // nor credit), and most orgs have no plan/0% fee, so this account
-      // often never needs to exist at all.
-      const feePercentGreaterThanZero = record.platformFeeValue.greaterThan(0);
-      const feeAccount = feePercentGreaterThanZero
-        ? await this.findOrCreateFundAccount(
-            tx,
-            record.organisationId,
-            record.fundId,
-            'Platform Fee Expense',
-            'EXPENSE',
-          )
-        : null;
-
-      const paymentIntent = await tx.paymentIntent.findUnique({
-        where: { id: record.paymentIntentId },
-      });
-      if (!paymentIntent) {
-        throw new NotFoundException(
-          'The contribution payment behind this disbursement was not found',
-        );
-      }
-
-      const journalEntry = await this.ledger.postJournalEntryInTx(
-        tx,
-        record.organisationId,
-        {
-          fundId: record.fundId,
-          description: `Auto-disbursement to organisation MoMo for contribution ${record.paymentIntentId}`,
-          sourceType: 'auto_disbursement',
-          sourceId: record.id,
-          // The member whose payment triggered this — no human officer
-          // initiates an automatic disbursement, and JournalEntry.createdBy
-          // is a real Member.id everywhere else in this schema, so this
-          // keeps that contract rather than inventing a sentinel string.
-          createdBy: paymentIntent.memberId,
-          lines: [
-            {
-              ledgerAccountId: cashAccount.id,
-              credit: record.disbursableAmountValue.toString(),
-            },
-            ...(feeAccount
-              ? [
-                  {
-                    ledgerAccountId: feeAccount.id,
-                    debit: record.platformFeeValue.toString(),
-                  },
-                ]
-              : []),
-            {
-              ledgerAccountId: settledAccount.id,
-              debit: record.transferAmountValue.toString(),
-            },
-          ],
-        },
-      );
-
-      await tx.autoDisbursement.update({
-        where: { id: record.id },
-        data: { status: 'SUCCEEDED', completedAt: new Date() },
-      });
-
-      return { outcome: 'succeeded' as const, journalEntryId: journalEntry.id };
+    const paymentIntent = await tx.paymentIntent.findUnique({
+      where: { id: record.paymentIntentId },
     });
+    if (!paymentIntent) {
+      throw new NotFoundException(
+        'The contribution payment behind this disbursement was not found',
+      );
+    }
+
+    const journalEntry = await this.ledger.postJournalEntryInTx(
+      tx,
+      record.organisationId,
+      {
+        fundId: record.fundId,
+        description: `Auto-disbursement to organisation MoMo for contribution ${record.paymentIntentId}`,
+        sourceType: 'auto_disbursement',
+        sourceId: record.id,
+        // The member whose payment triggered this — no human officer
+        // initiates an automatic disbursement, and JournalEntry.createdBy
+        // is a real Member.id everywhere else in this schema, so this
+        // keeps that contract rather than inventing a sentinel string.
+        createdBy: paymentIntent.memberId,
+        lines: [
+          {
+            ledgerAccountId: cashAccount.id,
+            credit: record.disbursableAmountValue.toString(),
+          },
+          ...(feeAccount
+            ? [
+                {
+                  ledgerAccountId: feeAccount.id,
+                  debit: record.platformFeeValue.toString(),
+                },
+              ]
+            : []),
+          {
+            ledgerAccountId: settledAccount.id,
+            debit: record.transferAmountValue.toString(),
+          },
+        ],
+      },
+    );
+
+    await tx.autoDisbursement.update({
+      where: { id: record.id },
+      data: { status: 'SUCCEEDED', completedAt: new Date() },
+    });
+
+    return { outcome: 'succeeded' as const, journalEntryId: journalEntry.id };
+  }
+
+  private async confirmPayoutTransfer(
+    tx: Prisma.TransactionClient,
+    dto: TransferWebhookPayloadDto,
+    payout: PayoutRequest,
+  ) {
+    if (payout.status !== 'TRANSFER_PENDING') {
+      const reportedOutcome =
+        dto.status === 'succeeded' ? 'SUCCEEDED' : 'TRANSFER_FAILED';
+      if (payout.status !== reportedOutcome) {
+        await tx.reconciliationException.create({
+          data: {
+            organisationId: dto.organisationId,
+            providerReference: dto.providerReference,
+            reason: `Transfer webhook reported "${dto.status}" but payout request ${payout.id} was already recorded as ${payout.status}`,
+          },
+        });
+      }
+      return { outcome: 'already_processed' as const, status: payout.status };
+    }
+
+    if (dto.status === 'failed') {
+      await tx.payoutRequest.update({
+        where: { id: payout.id },
+        data: { status: 'TRANSFER_FAILED' },
+      });
+      await tx.reconciliationException.create({
+        data: {
+          organisationId: dto.organisationId,
+          providerReference: dto.providerReference,
+          reason: `Payout transfer failed for request ${payout.id} (${payout.purpose})`,
+        },
+      });
+      return { outcome: 'failed' as const };
+    }
+
+    const [cashAccount, expenseAccount] = await Promise.all([
+      tx.ledgerAccount.findFirst({
+        where: { fundId: payout.fundId, name: 'Cash' },
+      }),
+      tx.ledgerAccount.findFirst({
+        where: { fundId: payout.fundId, name: 'Benefits Expense' },
+      }),
+    ]);
+    if (!cashAccount || !expenseAccount) {
+      throw new NotFoundException(
+        'Cash or Benefits Expense accounts missing for this fund',
+      );
+    }
+
+    const journalEntry = await this.ledger.postJournalEntryInTx(
+      tx,
+      dto.organisationId,
+      {
+        fundId: payout.fundId,
+        description: `Payout disbursement to recipient ${payout.recipientId} for: ${payout.purpose}`,
+        sourceType: 'benefit_disbursement',
+        sourceId: payout.id,
+        // No human officer confirms a webhook — the approving officer(s)
+        // are already recorded as PayoutApproval rows; requesterId is the
+        // closest real Member.id to attribute this posting to, same
+        // "createdBy is always a genuine Member" contract used elsewhere.
+        createdBy: payout.requesterId,
+        lines: [
+          {
+            ledgerAccountId: expenseAccount.id,
+            debit: payout.amountValue.toString(),
+          },
+          {
+            ledgerAccountId: cashAccount.id,
+            credit: payout.amountValue.toString(),
+          },
+        ],
+      },
+    );
+
+    await tx.payoutRequest.update({
+      where: { id: payout.id },
+      data: { status: 'SUCCEEDED', completedAt: new Date() },
+    });
+
+    return { outcome: 'succeeded' as const, journalEntryId: journalEntry.id };
   }
 }

@@ -21,7 +21,12 @@ export interface InitiateTransferParams {
   currency: string;
   reference: string; // our own idempotency key
   reason: string;
-  metadata: { organisationId: string; autoDisbursementId: string };
+  // referenceId is whichever row initiated this — an AutoDisbursement.id
+  // or a PayoutRequest.id. Provider-facing only (forwarded to Paystack
+  // for their own records); PayoutService.handleTransferWebhook routes an
+  // incoming confirmation by looking its providerReference up in both
+  // tables, not by reading this back.
+  metadata: { organisationId: string; referenceId: string };
 }
 
 export interface InitiateTransferResult {

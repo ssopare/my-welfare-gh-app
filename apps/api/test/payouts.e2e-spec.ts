@@ -31,6 +31,8 @@ interface PayoutRecipientResponse {
   id: string;
   isAllowlisted: boolean;
   accountNumber: string;
+  verified: boolean;
+  providerRecipientCode: string | null;
 }
 
 interface LedgerBalanceResponse {
@@ -40,6 +42,12 @@ interface LedgerBalanceResponse {
 interface PayoutRequestResponse {
   id: string;
   status: string;
+  providerReference: string | null;
+}
+
+interface TransferWebhookResponse {
+  outcome: string;
+  journalEntryId?: string;
 }
 
 describe('Payouts & Treasury (e2e)', () => {
@@ -63,6 +71,9 @@ describe('Payouts & Treasury (e2e)', () => {
 
   afterAll(async () => {
     for (const organisationId of createdOrgIds) {
+      await prisma.withTenant(organisationId, (tx) =>
+        tx.reconciliationException.deleteMany({ where: { organisationId } }),
+      );
       await prisma.withTenant(organisationId, (tx) =>
         tx.payoutApproval.deleteMany({
           where: { payoutRequest: { organisationId } },
@@ -209,6 +220,21 @@ describe('Payouts & Treasury (e2e)', () => {
     };
   }
 
+  // Mock/dev completion for the async transfer PayoutService.approvePayoutRequest
+  // hands off to once a payout is fully approved — mirrors the shape of
+  // the real Paystack transfer.success/transfer.failed webhook.
+  async function fireTransferWebhook(
+    organisationId: string,
+    providerReference: string,
+    status: 'succeeded' | 'failed',
+  ): Promise<TransferWebhookResponse> {
+    const res = await request(app.getHttpServer())
+      .post('/payments/transfers/webhook')
+      .send({ organisationId, providerReference, status })
+      .expect(201);
+    return res.body as TransferWebhookResponse;
+  }
+
   it('rejects an ordinary member with no ledger permission from reading recipients or policy', async () => {
     const { adminToken, organisationId } = await registerOrganisation(
       'Recipients Access Control Org',
@@ -303,20 +329,23 @@ describe('Payouts & Treasury (e2e)', () => {
     expect(policy.dailyLimitValue).toBe('1000');
     expect(policy.thresholdOneApproverValue).toBe('100');
 
-    // 3. Create Payout Recipient (Allowlisted)
+    // 3. Create Payout Recipient (Allowlisted) — a real Paystack Transfer
+    // Recipient call (MockTransferProvider here), same reasoning as
+    // settlement-account setup above.
     const recipientRes = await request(app.getHttpServer())
       .post('/payouts/recipients')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         name: 'Beneficiary Kofi',
-        type: 'momo',
+        momoProvider: 'mtn',
         accountNumber: '0241112223',
-        bankCode: 'MTN',
       })
       .expect(201);
 
     const recipient = recipientRes.body as PayoutRecipientResponse;
     expect(recipient.isAllowlisted).toBe(true);
+    expect(recipient.verified).toBe(true);
+    expect(recipient.providerRecipientCode).toContain('mock_rcp_');
 
     const listRecipientsRes = await request(app.getHttpServer())
       .get('/payouts/recipients')
@@ -447,11 +476,30 @@ describe('Payouts & Treasury (e2e)', () => {
       })
       .expect(201);
 
-    expect((approvedRes1.body as PayoutRequestResponse).status).toBe(
-      'SUCCEEDED',
-    ); // Complete!
+    // Fully approved hands off to a real transfer — TRANSFER_PENDING, not
+    // instantly SUCCEEDED, and nothing posted to the ledger yet (see
+    // PayoutService.approvePayoutRequest/confirmPayoutTransfer).
+    const approved1 = approvedRes1.body as PayoutRequestResponse;
+    expect(approved1.status).toBe('TRANSFER_PENDING');
+    expect(approved1.providerReference).toEqual(expect.any(String));
 
-    // Verify Cash balance is now decreased to 1950 GHS
+    const balanceBeforeConfirm1 = await request(app.getHttpServer())
+      .get(`/ledger-accounts/${cashAccount!.id}/balance`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((balanceBeforeConfirm1.body as LedgerBalanceResponse).balance).toBe(
+      '2000',
+    );
+
+    const confirm1 = await fireTransferWebhook(
+      organisationId,
+      approved1.providerReference!,
+      'succeeded',
+    );
+    expect(confirm1.outcome).toBe('succeeded');
+
+    // Only now, after the transfer is confirmed, has the ledger actually
+    // moved — Cash decreased to 1950 GHS.
     const finalBalanceRes1 = await request(app.getHttpServer())
       .get(`/ledger-accounts/${cashAccount!.id}/balance`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -503,9 +551,14 @@ describe('Payouts & Treasury (e2e)', () => {
       })
       .expect(201);
 
-    expect((completedApprovalRes.body as PayoutRequestResponse).status).toBe(
-      'SUCCEEDED',
-    ); // Complete!
+    const approved2 = completedApprovalRes.body as PayoutRequestResponse;
+    expect(approved2.status).toBe('TRANSFER_PENDING');
+
+    await fireTransferWebhook(
+      organisationId,
+      approved2.providerReference!,
+      'succeeded',
+    );
 
     // Cash balance is now decreased by 250 GHS to 1700 GHS
     const finalBalanceRes2 = await request(app.getHttpServer())
@@ -555,9 +608,8 @@ describe('Payouts & Treasury (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         name: 'Race Condition Beneficiary',
-        type: 'momo',
+        momoProvider: 'mtn',
         accountNumber: '0241119999',
-        bankCode: 'MTN',
       })
       .expect(201);
     const recipient = recipientRes.body as PayoutRecipientResponse;
@@ -644,17 +696,25 @@ describe('Payouts & Treasury (e2e)', () => {
 
     expect(res1.status).toBe(201);
     expect(res2.status).toBe(201);
-    const statuses = [
-      (res1.body as PayoutRequestResponse).status,
-      (res2.body as PayoutRequestResponse).status,
-    ].sort();
+    const bodies = [
+      res1.body as PayoutRequestResponse,
+      res2.body as PayoutRequestResponse,
+    ];
+    const statuses = bodies.map((b) => b.status).sort();
     // Exactly one approval crosses the 2-approver threshold — the other
     // is the one that got there first and correctly saw itself still
     // short of it. Both landing on the same status would mean the lock
     // isn't preventing the race (either both stuck PENDING, or a lost
-    // update let both jump straight to SUCCEEDED without seeing each
-    // other's approval).
-    expect(statuses).toEqual(['PENDING', 'SUCCEEDED']);
+    // update let both jump straight to TRANSFER_PENDING without seeing
+    // each other's approval).
+    expect(statuses).toEqual(['PENDING', 'TRANSFER_PENDING']);
+
+    const pendingTransfer = bodies.find((b) => b.status === 'TRANSFER_PENDING');
+    await fireTransferWebhook(
+      organisationId,
+      pendingTransfer!.providerReference!,
+      'succeeded',
+    );
 
     // The real proof: exactly one 100 GHS disbursement was posted, not
     // zero (stuck) and not two (double-posted).
@@ -697,9 +757,8 @@ describe('Payouts & Treasury (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         name: 'Daily Limit Race Beneficiary',
-        type: 'momo',
+        momoProvider: 'mtn',
         accountNumber: '0241118888',
-        bankCode: 'MTN',
       })
       .expect(201);
     const recipient = recipientRes.body as PayoutRecipientResponse;
@@ -800,5 +859,204 @@ describe('Payouts & Treasury (e2e)', () => {
     );
     expect(created).toHaveLength(1);
     expect(created[0].amountValue.toString()).toBe('60');
+  });
+
+  it('refuses to create (or approve) a payout request against a recipient the payment provider never verified', async () => {
+    const admin = await registerOrganisation('Unverified Recipient Org');
+    const { adminToken, organisationId } = admin;
+
+    const recipientRes = await request(app.getHttpServer())
+      .post('/payouts/recipients')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Unverified Beneficiary',
+        momoProvider: 'mtn',
+        accountNumber: '0241117777',
+      })
+      .expect(201);
+    const recipient = recipientRes.body as PayoutRecipientResponse;
+
+    // MockTransferProvider always confirms — simulate the real-world case
+    // where a recipient was created but Paystack never actually confirmed
+    // it (or was later flagged), directly, the same way other tests seed
+    // DB state no HTTP path can reach.
+    await prisma.withTenant(organisationId, (tx) =>
+      tx.payoutRecipient.update({
+        where: { id: recipient.id },
+        data: { verified: false },
+      }),
+    );
+
+    const fund = await prisma.withTenant(organisationId, (tx) =>
+      tx.fund.create({
+        data: { organisationId, name: 'Unverified Recipient Fund' },
+      }),
+    );
+    await prisma.withTenant(organisationId, (tx) =>
+      tx.ledgerAccount.createMany({
+        data: [
+          { organisationId, fundId: fund.id, name: 'Cash', type: 'ASSET' },
+          {
+            organisationId,
+            fundId: fund.id,
+            name: 'Benefits Expense',
+            type: 'EXPENSE',
+          },
+        ],
+      }),
+    );
+
+    await request(app.getHttpServer())
+      .post('/payouts/requests')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        amountValue: '10.00',
+        fundId: fund.id,
+        recipientId: recipient.id,
+        purpose: 'Should be refused',
+      })
+      .expect(400);
+  });
+
+  it('a failed transfer marks the payout TRANSFER_FAILED, posts nothing to the ledger, and raises a reconciliation exception', async () => {
+    const admin = await registerOrganisation('Payout Transfer Failure Org');
+    const { adminToken, adminMemberId, organisationId } = admin;
+    const { token: checkerToken } = await registerMember(organisationId);
+
+    const recipientRes = await request(app.getHttpServer())
+      .post('/payouts/recipients')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Transfer Failure Beneficiary',
+        momoProvider: 'mtn',
+        accountNumber: '0241116666',
+      })
+      .expect(201);
+    const recipient = recipientRes.body as PayoutRecipientResponse;
+
+    const fund = await prisma.withTenant(organisationId, (tx) =>
+      tx.fund.create({
+        data: { organisationId, name: 'Transfer Failure Fund' },
+      }),
+    );
+    await prisma.withTenant(organisationId, (tx) =>
+      tx.ledgerAccount.createMany({
+        data: [
+          { organisationId, fundId: fund.id, name: 'Cash', type: 'ASSET' },
+          {
+            organisationId,
+            fundId: fund.id,
+            name: 'Benefits Expense',
+            type: 'EXPENSE',
+          },
+        ],
+      }),
+    );
+    const cashAccount = await prisma.withTenant(organisationId, (tx) =>
+      tx.ledgerAccount.findFirst({
+        where: { fundId: fund.id, name: 'Cash' },
+      }),
+    );
+    const expenseAccount = await prisma.withTenant(organisationId, (tx) =>
+      tx.ledgerAccount.findFirst({
+        where: { fundId: fund.id, name: 'Benefits Expense' },
+      }),
+    );
+    await prisma.withTenant(organisationId, (tx) =>
+      tx.journalEntry.create({
+        data: {
+          organisationId,
+          fundId: fund.id,
+          description: 'Initial funding deposit',
+          sourceType: 'general',
+          createdBy: adminMemberId,
+          lines: {
+            create: [
+              {
+                organisationId,
+                ledgerAccountId: cashAccount!.id,
+                debit: '500.00',
+              },
+              {
+                organisationId,
+                ledgerAccountId: expenseAccount!.id,
+                credit: '500.00',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const requestRes = await request(app.getHttpServer())
+      .post('/payouts/requests')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        amountValue: '40.00',
+        fundId: fund.id,
+        recipientId: recipient.id,
+        purpose: 'Transfer failure regression test',
+      })
+      .expect(201);
+    const payoutRequest = requestRes.body as PayoutRequestResponse;
+
+    const approveRes = await request(app.getHttpServer())
+      .post(`/payouts/requests/${payoutRequest.id}/approve`)
+      .set('Authorization', `Bearer ${checkerToken}`)
+      .send({ decision: 'APPROVED', comment: 'Approved.' })
+      .expect(201);
+    const approved = approveRes.body as PayoutRequestResponse;
+    expect(approved.status).toBe('TRANSFER_PENDING');
+
+    const failRes = await fireTransferWebhook(
+      organisationId,
+      approved.providerReference!,
+      'failed',
+    );
+    expect(failRes.outcome).toBe('failed');
+
+    const updated = await prisma.withTenant(organisationId, (tx) =>
+      tx.payoutRequest.findUnique({ where: { id: payoutRequest.id } }),
+    );
+    expect(updated?.status).toBe('TRANSFER_FAILED');
+
+    // Cash is untouched — the approval happened, but no money actually
+    // moved, so nothing should have posted to the ledger.
+    const balanceRes = await request(app.getHttpServer())
+      .get(`/ledger-accounts/${cashAccount!.id}/balance`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((balanceRes.body as LedgerBalanceResponse).balance).toBe('500');
+
+    const exceptionsRes = await request(app.getHttpServer())
+      .get('/reconciliation-exceptions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(
+      (exceptionsRes.body as { reason: string }[]).some((e) =>
+        e.reason.includes('Payout transfer failed'),
+      ),
+    ).toBe(true);
+  });
+
+  it('an unknown transfer providerReference is routed to a reconciliation exception, not silently swallowed by either table', async () => {
+    const admin = await registerOrganisation('Payout Unmatched Webhook Org');
+
+    const res = await fireTransferWebhook(
+      admin.organisationId,
+      'mock_transfer_never_existed_anywhere',
+      'succeeded',
+    );
+    expect(res.outcome).toBe('unmatched');
+
+    const exceptionsRes = await request(app.getHttpServer())
+      .get('/reconciliation-exceptions')
+      .set('Authorization', `Bearer ${admin.adminToken}`)
+      .expect(200);
+    expect(
+      (exceptionsRes.body as { reason: string }[]).some((e) =>
+        e.reason.includes('unknown providerReference'),
+      ),
+    ).toBe(true);
   });
 });
