@@ -64,6 +64,19 @@ export class ReportingController {
     );
   }
 
+  @Get('reports/manual-payments')
+  manualPaymentsReport(
+    @CurrentUser() user: AuthTokenPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reporting.manualPaymentsReport(
+      user,
+      parseDate(from),
+      parseDate(to),
+    );
+  }
+
   @Get('reports/income-expenditure')
   incomeExpenditureStatement(
     @CurrentUser() user: AuthTokenPayload,

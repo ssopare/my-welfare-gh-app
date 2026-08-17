@@ -80,10 +80,25 @@ export function NewPlanDialog() {
             </Select>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="trialDays">Trial days</Label>
-            <Input id="trialDays" name="trialDays" type="number" min={0} placeholder="60" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="trialDays">Trial days</Label>
+              <Input id="trialDays" name="trialDays" type="number" min={0} placeholder="60" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="platformFeePercentage">Platform fee (%)</Label>
+              <Input
+                id="platformFeePercentage"
+                name="platformFeePercentage"
+                inputMode="decimal"
+                placeholder="0.00"
+                defaultValue="0"
+              />
+            </div>
           </div>
+          <p className="-mt-2 text-xs text-muted-foreground">
+            Retained from every contribution auto-disbursed to an organisation on this plan.
+          </p>
 
           {state.error && (
             <p role="alert" className="rounded-md bg-status-bad-bg px-3 py-2 text-sm text-status-bad">

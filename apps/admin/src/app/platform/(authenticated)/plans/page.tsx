@@ -57,6 +57,7 @@ export default async function PlatformPlansPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Price</TableHead>
                 <TableHead>Trial</TableHead>
+                <TableHead>Platform fee</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-28" />
               </TableRow>
@@ -72,6 +73,7 @@ export default async function PlatformPlansPage() {
                     </span>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{plan.trialDays} days</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{plan.platformFeePercentage}%</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={plan.archived ? "" : "border-status-good-border bg-status-good-bg text-status-good"}>
                       {plan.archived ? "Archived" : "Active"}

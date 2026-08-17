@@ -118,7 +118,7 @@ export default async function TreasuryPage() {
                 Settlement Account Setup
               </CardTitle>
               <CardDescription suppressHydrationWarning>
-                Link your Paystack subaccount or verified bank/MoMo details for direct payouts settlement.
+                Register this organisation&apos;s own Mobile Money number to receive auto-disbursed contributions.
               </CardDescription>
             </CardHeader>
             <CardContent>

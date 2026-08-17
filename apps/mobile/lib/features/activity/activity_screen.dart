@@ -63,7 +63,13 @@ class ActivityScreen extends ConsumerWidget {
                           ListTile(
                             title: Text(entry.memberDisplayName),
                             subtitle: Text(
-                              '${DateFormat('MMM d, y').format(entry.dueDate)} · ${_relativeTime(entry.postedAt)}',
+                              entry.verified
+                                  ? '${DateFormat('MMM d, y').format(entry.dueDate)} · ${_relativeTime(entry.postedAt)}'
+                                  : '${DateFormat('MMM d, y').format(entry.dueDate)} · ${_relativeTime(entry.postedAt)} · '
+                                      'Recorded by ${entry.recordedByName ?? 'admin'}',
+                              style: entry.verified
+                                  ? null
+                                  : TextStyle(color: theme.colorScheme.tertiary),
                             ),
                             trailing: MoneyText(value: entry.amount),
                           ),

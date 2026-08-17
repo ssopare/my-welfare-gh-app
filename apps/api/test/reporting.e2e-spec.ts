@@ -108,6 +108,15 @@ interface DisbursementReportRow {
   }[];
 }
 
+interface ManualPaymentReportRow {
+  journalEntryId: string;
+  amountValue: string;
+  memberId: string;
+  memberName: string | null;
+  recordedByMemberId: string;
+  recordedByName: string | null;
+}
+
 // Phase 1 roadmap slice 9: Reporting (§16), Phase 1 scope only per the
 // roadmap table (contribution summary, member statement, defaulter
 // register, disbursement report — forecasting/solvency, income/expense
@@ -147,6 +156,19 @@ describe('Reporting (e2e)', () => {
       );
       await prisma.withTenant(organisationId, (tx) =>
         tx.defaulterPolicy.deleteMany({ where: { organisationId } }),
+      );
+      // Must go before journalLine/journalEntry/fund deletes below —
+      // PaymentIntent FK-references all three (only ever created by the
+      // manual-payments report test's real initiate+webhook payment, but
+      // unconditionally safe to run for every org here).
+      await prisma.withTenant(organisationId, (tx) =>
+        tx.paymentIntent.updateMany({
+          where: { organisationId },
+          data: { journalEntryId: null },
+        }),
+      );
+      await prisma.withTenant(organisationId, (tx) =>
+        tx.paymentIntent.deleteMany({ where: { organisationId } }),
       );
       await prisma.withTenant(organisationId, (tx) =>
         tx.journalLine.deleteMany({ where: { organisationId } }),
@@ -573,8 +595,12 @@ describe('Reporting (e2e)', () => {
       .expect(200);
     const statement = res.body as MemberStatementResponse;
     expect(statement.obligations).toHaveLength(2);
+    // payContribution above is the manual/admin-attested path, not a
+    // Paystack-verified one — see ObligationService.recordContributionPaymentInTx.
     expect(
-      statement.payments.some((p) => p.sourceType === 'contribution_payment'),
+      statement.payments.some(
+        (p) => p.sourceType === 'contribution_payment_manual',
+      ),
     ).toBe(true);
     const olderObligation = statement.obligations.find(
       (o) => o.id === older.id,
@@ -715,6 +741,83 @@ describe('Reporting (e2e)', () => {
     // An ordinary member without ledger:view cannot read this report.
     await request(app.getHttpServer())
       .get('/reports/disbursements')
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(403);
+  });
+
+  it('the manual-payments report lists only admin-attested contributions, with who recorded each — never a Paystack-verified one', async () => {
+    const admin = await registerOrganisation('Manual Payments Report Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, member.identity.memberId, 'ACTIVE');
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken);
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-08-01',
+    );
+
+    // A manual attestation — the treasurer claiming they collected this
+    // themselves, nothing independently confirming it.
+    await payContribution(
+      admin.accessToken,
+      member.identity.memberId,
+      fund.id,
+      '20.00',
+    );
+
+    // A second member's obligation, settled the real way — initiated and
+    // confirmed via the (mock) payment provider, never touching
+    // /payments/contribution at all. Must NOT show up in this report.
+    const memberB = await joinOrganisation(admin.identity.organisationId);
+    await setStatus(admin.accessToken, memberB.identity.memberId, 'ACTIVE');
+    await createPastObligation(
+      admin.accessToken,
+      plan.id,
+      memberB.identity.memberId,
+      '2026-08-01',
+    );
+    const intentRes = await request(app.getHttpServer())
+      .post('/payments/contribution/initiate')
+      .set('Authorization', `Bearer ${memberB.accessToken}`)
+      .send({
+        memberId: memberB.identity.memberId,
+        fundId: fund.id,
+        amountValue: '20.00',
+        currency: 'GHS',
+        channel: 'MOBILE_MONEY',
+      })
+      .expect(201);
+    const intent = intentRes.body as { providerReference: string };
+    await request(app.getHttpServer())
+      .post('/payments/webhook')
+      .send({
+        organisationId: admin.identity.organisationId,
+        providerReference: intent.providerReference,
+        status: 'succeeded',
+      })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get('/reports/manual-payments')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const rows = res.body as ManualPaymentReportRow[];
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].memberId).toBe(member.identity.memberId);
+    expect(rows[0].amountValue).toBe('20');
+    expect(rows[0].recordedByMemberId).toBe(admin.identity.memberId);
+    expect(rows[0].recordedByName).toBe('Test Admin');
+    // The real, verified payment for memberB never appears here.
+    expect(rows.some((r) => r.memberId === memberB.identity.memberId)).toBe(
+      false,
+    );
+
+    // An ordinary member without ledger:view cannot read this report.
+    await request(app.getHttpServer())
+      .get('/reports/manual-payments')
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(403);
   });

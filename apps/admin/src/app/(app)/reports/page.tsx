@@ -13,6 +13,7 @@ import {
   PiggyBank,
   Scale,
   ScrollText,
+  ShieldAlert,
   Target,
   Undo2,
   UserSearch,
@@ -43,6 +44,12 @@ const REPORTS = [
     icon: Banknote,
     title: "Disbursement report",
     description: "Every paid benefit claim, its amount, and its full approver trail.",
+  },
+  {
+    href: "/reports/manual-payments",
+    icon: ShieldAlert,
+    title: "Manually Recorded Payments",
+    description: "Every contribution an admin attested was received rather than the provider verifying it — who recorded what, and when.",
   },
   {
     href: "/reports/income-expenditure",

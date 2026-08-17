@@ -15,6 +15,8 @@ class PaymentActivityEntry {
     required this.cadence,
     required this.memberName,
     required this.memberPhoneNumber,
+    required this.verified,
+    required this.recordedByName,
   });
 
   factory PaymentActivityEntry.fromJson(Map<String, dynamic> json) {
@@ -30,6 +32,11 @@ class PaymentActivityEntry {
       cadence: plan['cadence'] as String,
       memberName: account['name'] as String?,
       memberPhoneNumber: account['phoneNumber'] as String,
+      // true for a real, Paystack-confirmed payment; false when an
+      // admin/treasurer manually attested they collected it themselves —
+      // see PaymentService.listActivity on the backend.
+      verified: json['verified'] as bool? ?? true,
+      recordedByName: json['recordedByName'] as String?,
     );
   }
 
@@ -40,6 +47,8 @@ class PaymentActivityEntry {
   final String cadence;
   final String? memberName;
   final String memberPhoneNumber;
+  final bool verified;
+  final String? recordedByName;
 
   String get memberDisplayName => memberName ?? memberPhoneNumber;
 }

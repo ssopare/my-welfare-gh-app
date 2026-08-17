@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { FundControlPolicy } from "@welfare/shared-types";
@@ -65,6 +66,25 @@ export function PolicyForm({
             defaultValue={policy?.thresholdTwoApproversValue ?? "5000.00"}
             required
           />
+        </div>
+      </div>
+
+      <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/30 p-3">
+        <Checkbox
+          id="autoDisbursement"
+          name="autoDisbursement"
+          value="on"
+          defaultChecked={policy?.autoDisbursement ?? false}
+          className="mt-0.5"
+        />
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="autoDisbursement" className="font-medium">
+            Auto-disburse contributions to our settlement account
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            When on, each confirmed contribution&apos;s net share is sent to this organisation&apos;s MoMo
+            settlement account automatically — no approval step. Requires a verified settlement account below.
+          </p>
         </div>
       </div>
 

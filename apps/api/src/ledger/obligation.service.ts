@@ -174,6 +174,7 @@ export class ObligationService {
         actor.organisationId,
         actor.memberId,
         dto,
+        'manual',
       ),
     );
   }
@@ -191,6 +192,14 @@ export class ObligationService {
     organisationId: string,
     postedBy: string,
     dto: RecordContributionPaymentDto,
+    // 'verified': a real, provider-confirmed payment (PaymentService.handleWebhook).
+    // 'manual': an admin/treasurer's own attestation that they personally
+    // collected cash/a transfer (recordContributionPayment) — nothing here
+    // independently confirms that actually happened. Tagged onto the
+    // posted JournalEntry's sourceType so every payment's provenance stays
+    // visible later (activity feed, the manual-payments audit report) —
+    // see ReportingService.manualPaymentsReport.
+    source: 'verified' | 'manual',
   ) {
     const organisation = await tx.organisation.findUnique({
       where: { id: organisationId },
@@ -610,7 +619,10 @@ export class ObligationService {
         description: dto.reference
           ? `Contribution payment from member ${dto.memberId} (${dto.reference})`
           : `Contribution payment from member ${dto.memberId}`,
-        sourceType: 'contribution_payment',
+        sourceType:
+          source === 'manual'
+            ? 'contribution_payment_manual'
+            : 'contribution_payment',
         createdBy: postedBy,
         lines: [
           {

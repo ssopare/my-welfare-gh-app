@@ -498,6 +498,82 @@ export class ReportingService {
     });
   }
 
+  // The audit trail for the one place this app asks you to just trust a
+  // human: recordContributionPayment lets an admin/treasurer attest "I
+  // personally collected this," with nothing independently confirming it
+  // (unlike a real Paystack-verified payment, tagged 'contribution_payment'
+  // rather than 'contribution_payment_manual' — see
+  // ObligationService.recordContributionPaymentInTx). This report doesn't
+  // change who's allowed to do that; it just makes every instance of it
+  // visible — who recorded what, for whom, and when — rather than leaving
+  // it buried in raw ledger data only findable by someone who already
+  // knows to go look.
+  async manualPaymentsReport(actor: AuthTokenPayload, from?: Date, to?: Date) {
+    await requirePermission(this.rbac, actor, 'ledger', 'view');
+    return this.prisma.withTenant(actor.organisationId, async (tx) => {
+      const lines = await tx.journalLine.findMany({
+        where: {
+          obligationId: { not: null },
+          ledgerAccount: { name: 'Contributions Income' },
+          journalEntry: {
+            sourceType: 'contribution_payment_manual',
+            ...(from || to
+              ? {
+                  postedAt: {
+                    ...(from ? { gte: from } : {}),
+                    ...(to ? { lte: to } : {}),
+                  },
+                }
+              : {}),
+          },
+        },
+        select: {
+          credit: true,
+          journalEntry: {
+            select: { id: true, postedAt: true, createdBy: true },
+          },
+          obligation: {
+            select: {
+              memberId: true,
+              contributionPlan: { select: { name: true } },
+              member: {
+                select: {
+                  account: { select: { name: true, phoneNumber: true } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { journalEntry: { postedAt: 'desc' } },
+      });
+
+      const recorderIds = new Set(
+        lines.map((line) => line.journalEntry.createdBy),
+      );
+      const recorders = await tx.member.findMany({
+        where: { id: { in: Array.from(recorderIds) } },
+        include: { account: { select: { name: true, phoneNumber: true } } },
+      });
+      const recorderById = new Map(recorders.map((r) => [r.id, r.account]));
+
+      return lines.map((line) => {
+        const recorder = recorderById.get(line.journalEntry.createdBy);
+        return {
+          journalEntryId: line.journalEntry.id,
+          postedAt: line.journalEntry.postedAt,
+          amountValue: line.credit.toString(),
+          memberId: line.obligation!.memberId,
+          memberName: line.obligation!.member.account.name,
+          memberPhoneNumber: line.obligation!.member.account.phoneNumber,
+          planName: line.obligation!.contributionPlan.name,
+          recordedByMemberId: line.journalEntry.createdBy,
+          recordedByName: recorder?.name ?? null,
+          recordedByPhoneNumber: recorder?.phoneNumber ?? null,
+        };
+      });
+    });
+  }
+
   // Phase A of the advanced reporting spec — formal Income & Expenditure
   // Statement. Sums every INCOME/EXPENSE account's net movement within
   // [from, to] (credit-debit for INCOME's credit-normal balance,
@@ -1239,19 +1315,24 @@ export class ReportingService {
   }
 
   // Advanced reporting Phase C §10 — Cash Flow Statement. Every Cash
-  // (ASSET) account's JournalLines carry exactly one of three sourceTypes
-  // today (see obligation.service.ts, claim.service.ts, ledger.service.ts):
-  // 'contribution_payment' (always a debit to Cash), 'benefit_disbursement'
-  // (always a credit), 'fund_transfer' (either, depending on direction).
-  // Operating = contributions/benefits; Financing = fund movements between
-  // this org's own funds; Investing is always zero because nothing in this
-  // system posts an investing-activity entry yet — an honest absence, not
-  // a hidden feature. closingCash sums every line up to `to` directly
-  // (the same running-balance technique as getLedgerAccountBalance),
-  // independently of the four sourceType buckets, so `reconciles` is a
-  // genuine cross-check that would catch a future sourceType this method
-  // doesn't yet categorize (it would still count toward closingCash but
-  // fall into no bucket), not a tautology.
+  // (ASSET) account's JournalLines carry one of a handful of sourceTypes
+  // today (see obligation.service.ts, claim.service.ts, ledger.service.ts,
+  // payout.service.ts): 'contribution_payment'/'contribution_payment_manual'
+  // (always a debit to Cash — verified vs admin-attested, see
+  // ObligationService.recordContributionPaymentInTx, irrelevant to cash
+  // flow itself since both are real cash movements), 'benefit_disbursement'
+  // and 'auto_disbursement' (always a credit — cash leaving to a benefit
+  // payout or an org's own auto-disbursed settlement, respectively),
+  // 'fund_transfer' (either, depending on direction). Operating =
+  // contributions/benefits/auto-disbursements; Financing = fund movements
+  // between this org's own funds; Investing is always zero because nothing
+  // in this system posts an investing-activity entry yet — an honest
+  // absence, not a hidden feature. closingCash sums every line up to `to`
+  // directly (the same running-balance technique as
+  // getLedgerAccountBalance), independently of these sourceType buckets,
+  // so `reconciles` is a genuine cross-check that would catch a future
+  // sourceType this method doesn't yet categorize (it would still count
+  // toward closingCash but fall into no bucket), not a tautology.
   async cashFlowStatement(
     actor: AuthTokenPayload,
     params: { fundId?: string; from: Date; to: Date },
@@ -1294,9 +1375,15 @@ export class ReportingService {
         }
         if (postedAt >= params.from && postedAt <= params.to) {
           const sourceType = line.journalEntry.sourceType;
-          if (sourceType === 'contribution_payment') {
+          if (
+            sourceType === 'contribution_payment' ||
+            sourceType === 'contribution_payment_manual'
+          ) {
             operatingIn = operatingIn.plus(line.debit);
-          } else if (sourceType === 'benefit_disbursement') {
+          } else if (
+            sourceType === 'benefit_disbursement' ||
+            sourceType === 'auto_disbursement'
+          ) {
             operatingOut = operatingOut.plus(line.credit);
           } else if (sourceType === 'fund_transfer') {
             financingIn = financingIn.plus(line.debit);
@@ -1561,7 +1648,11 @@ export class ReportingService {
         .filter(
           (l) =>
             l.journalEntry.reversalOfId !== null &&
-            l.journalEntry.sourceType === 'contribution_payment',
+            // A reversal entry inherits its original's sourceType (see
+            // LedgerService.reverseJournalEntry) — verified or manually
+            // recorded originally, still a contribution reversal either way.
+            (l.journalEntry.sourceType === 'contribution_payment' ||
+              l.journalEntry.sourceType === 'contribution_payment_manual'),
         )
         .reduce((sum, l) => sum.plus(l.debit), new Prisma.Decimal(0));
 

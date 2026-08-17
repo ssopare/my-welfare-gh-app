@@ -1125,6 +1125,22 @@ export interface ClaimApproverTrailEntry {
   comment: string | null;
 }
 
+// The audit trail for recordContributionPayment's "trust the admin"
+// attestation — see ReportingService.manualPaymentsReport. Never includes
+// a genuinely verified (Paystack-confirmed) payment.
+export interface ManualPaymentReportRow {
+  journalEntryId: string;
+  postedAt: string;
+  amountValue: string;
+  memberId: string;
+  memberName: string | null;
+  memberPhoneNumber: string;
+  planName: string;
+  recordedByMemberId: string;
+  recordedByName: string | null;
+  recordedByPhoneNumber: string | null;
+}
+
 export interface DisbursementReportRow {
   claimId: string;
   memberId: string;
@@ -1160,6 +1176,10 @@ export interface SubscriptionPlan {
   currency: string;
   billingCadence: string;
   trialDays: number;
+  // The platform's cut of every contribution auto-disbursed for an
+  // organisation on this plan — see AutoDisbursement on the API side.
+  // Platform-operator-set only.
+  platformFeePercentage: string;
   archived: boolean;
 }
 
@@ -1207,6 +1227,7 @@ export interface CreateSubscriptionPlanInput {
   currency: string;
   billingCadence: string;
   trialDays?: number;
+  platformFeePercentage?: string;
 }
 
 export interface UpdateSubscriptionStatusInput {
@@ -1221,9 +1242,13 @@ export interface UpdateSubscriptionStatusInput {
 export interface SettlementAccount {
   id: string;
   organisationId: string;
-  providerSubaccountCode: string;
-  bankName: string;
+  // A real Paystack Transfer Recipient (MoMo), not a bank-settled
+  // subaccount — see PayoutService.createSettlementAccount on the API
+  // side for why that earlier approach was a dead end.
+  momoProvider: "mtn" | "vod" | "atl";
+  accountName: string;
   accountNumber: string;
+  providerRecipientCode: string | null;
   verified: boolean;
   createdAt: string;
 }
@@ -1271,6 +1296,10 @@ export interface FundControlPolicy {
   monthlyLimitValue: string;
   thresholdOneApproverValue: string;
   thresholdTwoApproversValue: string;
+  // Org-admin opt-in: auto-disburse a contribution's net share to this
+  // org's SettlementAccount the moment payment is confirmed, no
+  // maker-checker approval — see PayoutService.triggerAutoDisbursementIfEnabledInTx.
+  autoDisbursement: boolean;
 }
 
 export interface ReconciliationRecord {
@@ -1286,8 +1315,9 @@ export interface ReconciliationRecord {
 }
 
 export interface CreateSettlementAccountInput {
-  bankName: string;
-  accountNumber: string;
+  momoProvider: "mtn" | "vod" | "atl";
+  phoneNumber: string;
+  accountName: string;
 }
 
 export interface CreatePayoutRecipientInput {

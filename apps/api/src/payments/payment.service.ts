@@ -218,6 +218,7 @@ export class PaymentService {
               ? intent.obligationIds
               : undefined,
           },
+          'verified',
         );
 
       const autoDisbursement =
@@ -278,15 +279,17 @@ export class PaymentService {
   // payment events a feed needs. Capped at 100 — a feed, not a full
   // historical export (Reporting already covers that, admin-only).
   async listActivity(actor: AuthTokenPayload) {
-    return this.prisma.withTenant(actor.organisationId, (tx) =>
-      tx.journalLine.findMany({
+    return this.prisma.withTenant(actor.organisationId, async (tx) => {
+      const lines = await tx.journalLine.findMany({
         where: {
           obligationId: { not: null },
           ledgerAccount: { name: 'Contributions Income' },
         },
         select: {
           credit: true,
-          journalEntry: { select: { postedAt: true } },
+          journalEntry: {
+            select: { postedAt: true, sourceType: true, createdBy: true },
+          },
           obligation: {
             select: {
               dueDate: true,
@@ -301,8 +304,42 @@ export class PaymentService {
         },
         orderBy: { journalEntry: { postedAt: 'desc' } },
         take: 100,
-      }),
-    );
+      });
+
+      // Only a manually-recorded entry needs its recorder's name resolved
+      // — a verified one was self-attested by the paying member, already
+      // covered by obligation.member above. Most feeds are all-verified,
+      // so this join is usually a no-op.
+      const manualRecorderIds = new Set(
+        lines
+          .filter(
+            (l) => l.journalEntry.sourceType === 'contribution_payment_manual',
+          )
+          .map((l) => l.journalEntry.createdBy),
+      );
+      const recorders = manualRecorderIds.size
+        ? await tx.member.findMany({
+            where: { id: { in: Array.from(manualRecorderIds) } },
+            include: { account: { select: { name: true, phoneNumber: true } } },
+          })
+        : [];
+      const recorderById = new Map(recorders.map((r) => [r.id, r.account]));
+
+      return lines.map((line) => {
+        const verified =
+          line.journalEntry.sourceType !== 'contribution_payment_manual';
+        const recorder = verified
+          ? null
+          : recorderById.get(line.journalEntry.createdBy);
+        return {
+          credit: line.credit,
+          journalEntry: { postedAt: line.journalEntry.postedAt },
+          obligation: line.obligation,
+          verified,
+          recordedByName: recorder?.name ?? null,
+        };
+      });
+    });
   }
 
   async listReconciliationExceptions(actor: AuthTokenPayload) {

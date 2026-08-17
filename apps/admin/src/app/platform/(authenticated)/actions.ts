@@ -47,12 +47,14 @@ export async function createSubscriptionPlanAction(
 ): Promise<FormActionState> {
   const { token } = await requirePlatformSession();
   const trialDaysRaw = String(formData.get("trialDays") ?? "").trim();
+  const platformFeePercentageRaw = String(formData.get("platformFeePercentage") ?? "").trim();
   const input: CreateSubscriptionPlanInput = {
     name: String(formData.get("name") ?? "").trim(),
     priceAmount: String(formData.get("priceAmount") ?? "").trim(),
     currency: String(formData.get("currency") ?? "GHS").trim(),
     billingCadence: String(formData.get("billingCadence") ?? "monthly"),
     trialDays: trialDaysRaw ? Number.parseInt(trialDaysRaw, 10) : undefined,
+    platformFeePercentage: platformFeePercentageRaw || undefined,
   };
 
   if (!input.name || !input.priceAmount) {

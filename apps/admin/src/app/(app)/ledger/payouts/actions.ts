@@ -20,18 +20,19 @@ export async function saveSettlementAccountAction(
   formData: FormData,
 ): Promise<FormActionState> {
   const { token } = await requireSession();
-  const bankName = String(formData.get("bankName") ?? "").trim();
-  const accountNumber = String(formData.get("accountNumber") ?? "").trim();
+  const momoProvider = String(formData.get("momoProvider") ?? "").trim();
+  const phoneNumber = String(formData.get("phoneNumber") ?? "").trim();
+  const accountName = String(formData.get("accountName") ?? "").trim();
 
-  if (!bankName || !accountNumber) {
-    return { error: "Bank name and account number are required." };
+  if (!momoProvider || !phoneNumber || !accountName) {
+    return { error: "Network, MoMo number, and account name are required." };
   }
 
   try {
     await apiFetch<SettlementAccount>("/payouts/settlement-account", {
       method: "POST",
       token,
-      body: { bankName, accountNumber },
+      body: { momoProvider, phoneNumber, accountName },
     });
   } catch (error) {
     return { error: error instanceof ApiError ? error.message : "Something went wrong. Please try again." };
@@ -50,6 +51,8 @@ export async function savePolicyAction(
   const monthlyLimitValue = String(formData.get("monthlyLimitValue") ?? "").trim();
   const thresholdOneApproverValue = String(formData.get("thresholdOneApproverValue") ?? "").trim();
   const thresholdTwoApproversValue = String(formData.get("thresholdTwoApproversValue") ?? "").trim();
+  // Checkboxes are only present in FormData when checked.
+  const autoDisbursement = formData.get("autoDisbursement") === "on";
 
   if (!dailyLimitValue || !monthlyLimitValue || !thresholdOneApproverValue || !thresholdTwoApproversValue) {
     return { error: "All limits and thresholds are required." };
@@ -64,6 +67,7 @@ export async function savePolicyAction(
         monthlyLimitValue,
         thresholdOneApproverValue,
         thresholdTwoApproversValue,
+        autoDisbursement,
       },
     });
   } catch (error) {

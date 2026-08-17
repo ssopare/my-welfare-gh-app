@@ -56,6 +56,16 @@ interface ReconciliationExceptionResponse {
   resolvedAt: string | null;
 }
 
+interface ActivityEntry {
+  credit: string;
+  obligation: {
+    contributionPlan: { name: string; cadence: string };
+    member: { account: { name: string | null; phoneNumber: string } };
+  };
+  verified: boolean;
+  recordedByName: string | null;
+}
+
 // Phase 1 roadmap slice 5: payments (§8.8, §15) — mobile money/card/bank
 // transfer collection via a provider abstraction (MockPaymentProvider,
 // since no live aggregator credentials exist for this project), and the
@@ -677,17 +687,15 @@ describe('Payments (e2e)', () => {
       .get('/payments/activity')
       .set('Authorization', `Bearer ${onlooker.accessToken}`)
       .expect(200);
-    const activity = activityRes.body as {
-      credit: string;
-      obligation: {
-        contributionPlan: { name: string; cadence: string };
-        member: { account: { name: string | null; phoneNumber: string } };
-      };
-    }[];
+    const activity = activityRes.body as ActivityEntry[];
     const entry = activity.find((a) => a.credit === '20');
     expect(entry).toBeDefined();
     expect(entry?.obligation.contributionPlan.name).toBe('Monthly Due');
     expect(entry?.obligation.member.account.name).toBe('Test Member');
+    // A real, Paystack-webhook-confirmed payment — not an admin's typed-in
+    // attestation. See ObligationService.recordContributionPaymentInTx's
+    // 'verified' vs 'manual' source tag.
+    expect(entry?.verified).toBe(true);
 
     // A member of a different org never sees it — still tenant-isolated;
     // this org has posted no payments of its own, so its feed is empty.
@@ -697,5 +705,43 @@ describe('Payments (e2e)', () => {
       .set('Authorization', `Bearer ${otherOrg.accessToken}`)
       .expect(200);
     expect(otherOrgActivity.body).toEqual([]);
+  });
+
+  it('a manually-recorded payment is visibly tagged unverified, with who recorded it, in the activity feed', async () => {
+    const admin = await registerOrganisation('Manual Payment Tag Org');
+    const member = await joinOrganisation(admin.identity.organisationId);
+    const fund = await createFund(admin.accessToken);
+    const plan = await createActivePlan(admin.accessToken, '20.00');
+    await createObligation(
+      admin.accessToken,
+      plan.id,
+      member.identity.memberId,
+      '2026-09-01',
+    );
+
+    // The admin/treasurer attesting they personally collected this — no
+    // Paystack charge, no webhook, just a trusted claim (see
+    // ObligationService.recordContributionPayment's own doc comment).
+    await request(app.getHttpServer())
+      .post('/payments/contribution')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        memberId: member.identity.memberId,
+        fundId: fund.id,
+        amountValue: '20.00',
+        currency: 'GHS',
+      })
+      .expect(201);
+
+    const activityRes = await request(app.getHttpServer())
+      .get('/payments/activity')
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(200);
+    const entry = (activityRes.body as ActivityEntry[]).find(
+      (a) => a.credit === '20',
+    );
+    expect(entry).toBeDefined();
+    expect(entry?.verified).toBe(false);
+    expect(entry?.recordedByName).toBe('Test Admin');
   });
 });
